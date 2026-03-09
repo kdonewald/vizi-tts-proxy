@@ -115,13 +115,5 @@ app.listen(PORT, () => {
   console.log(`Vizi TTS Proxy listening on port ${PORT}`);
   console.log(`Voice: ${VOICE_NAME}`);
 });
-```
 
-**Then update App Inventor `Button_TestTTS` blocks:**
-```
-set Web_TTS.Url to join
-  "https://vizi-tts-proxy-production.up.railway.app/tts?text="
-  call Web_TTS.UriEncode
-    text = "Hello I am Vizi your guitar tutor"
 
-call Web_TTS.Get
