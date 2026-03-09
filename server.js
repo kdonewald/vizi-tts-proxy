@@ -2,8 +2,19 @@ const express = require('express');
 const https = require('https');
 const app = express();
 
-app.use(express.json());
-app.use(express.text({ type: '*/*' }));
+app.use((req, res, next) => {
+  let data = '';
+  req.on('data', chunk => { data += chunk; });
+  req.on('end', () => {
+    req.rawBody = data;
+    try {
+      req.body = JSON.parse(data);
+    } catch(e) {
+      req.body = { text: data };
+    }
+    next();
+  });
+});
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const VOICE_NAME = process.env.VOICE_NAME || 'en-US-Neural2-F';
