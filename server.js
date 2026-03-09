@@ -8,7 +8,7 @@ app.use(express.json());
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
 // Voice config — Journey-F for natural Vizi voice
-const VOICE_NAME = process.env.VOICE_NAME || 'en-US-Journey-F';
+const VOICE_NAME = process.env.VOICE_NAME || 'en-US-Neural2-F';
 const LANGUAGE_CODE = 'en-US';
 
 app.get('/health', (req, res) => {
