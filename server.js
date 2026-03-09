@@ -3,6 +3,7 @@ const https = require('https');
 const app = express();
 
 app.use(express.json());
+app.use(express.text({ type: '*/*' }));
 
 // Your Google TTS API key — set as environment variable in Railway
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
