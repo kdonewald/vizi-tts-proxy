@@ -16,6 +16,8 @@ app.get('/health', (req, res) => {
 });
 
 app.post('/tts', (req, res) => {
+  console.log('Received body:', JSON.stringify(req.body));
+  console.log('Raw text:', req.body.text);
   const text = req.body.text;
 
   if (!text) {
