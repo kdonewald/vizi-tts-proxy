@@ -44,7 +44,7 @@ function synthesize(text, res) {
 
   const options = {
     hostname: 'texttospeech.googleapis.com',
-    path: `/v1/text:synthesize?key=${GOOGLE_API_KEY}`,
+    path: '/v1/text:synthesize?key=' + encodeURIComponent(GOOGLE_API_KEY),
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -112,8 +112,6 @@ app.post('/tts', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Vizi TTS Proxy listening on port ${PORT}`);
-  console.log(`Voice: ${VOICE_NAME}`);
+  console.log('Vizi TTS Proxy listening on port ' + PORT);
+  console.log('Voice: ' + VOICE_NAME);
 });
-
-
