@@ -24,25 +24,9 @@ app.get('/health', (req, res) => {
   res.json({ status: 'Vizi TTS Proxy running', voice: VOICE_NAME });
 });
 
-app.post('/tts', (req, res) => {
-  let text;
-  if (typeof req.body === 'string') {
-    try {
-      const parsed = JSON.parse(req.body);
-      text = parsed.text;
-    } catch(e) {
-      text = req.body;
-    }
-  } else {
-    text = req.body ? req.body.text : undefined;
-  }
+function synthesize(text, res) {
+  console.log('Synthesizing:', text);
 
-  console.log('Received body:', JSON.stringify(req.body));
-  console.log('Extracted text:', text);
-
-  if (!text) {
-    return res.status(400).json({ error: 'Missing text parameter' });
-  }
   if (!GOOGLE_API_KEY) {
     return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
   }
@@ -96,6 +80,34 @@ app.post('/tts', (req, res) => {
 
   googleReq.write(requestBody);
   googleReq.end();
+}
+
+app.get('/tts', (req, res) => {
+  const text = req.query.text;
+  console.log('GET /tts text:', text);
+  if (!text) {
+    return res.status(400).json({ error: 'Missing text parameter' });
+  }
+  synthesize(text, res);
+});
+
+app.post('/tts', (req, res) => {
+  let text;
+  if (typeof req.body === 'string') {
+    try {
+      const parsed = JSON.parse(req.body);
+      text = parsed.text;
+    } catch(e) {
+      text = req.body;
+    }
+  } else {
+    text = req.body ? req.body.text : undefined;
+  }
+  console.log('POST /tts text:', text);
+  if (!text) {
+    return res.status(400).json({ error: 'Missing text parameter' });
+  }
+  synthesize(text, res);
 });
 
 const PORT = process.env.PORT || 3000;
@@ -103,3 +115,13 @@ app.listen(PORT, () => {
   console.log(`Vizi TTS Proxy listening on port ${PORT}`);
   console.log(`Voice: ${VOICE_NAME}`);
 });
+```
+
+**Then update App Inventor `Button_TestTTS` blocks:**
+```
+set Web_TTS.Url to join
+  "https://vizi-tts-proxy-production.up.railway.app/tts?text="
+  call Web_TTS.UriEncode
+    text = "Hello I am Vizi your guitar tutor"
+
+call Web_TTS.Get
