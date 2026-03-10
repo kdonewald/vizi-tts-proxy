@@ -8,6 +8,7 @@ app.use((req, res, next) => {
   req.on('data', chunk => { data += chunk; });
   req.on('end', () => {
     req.rawBody = data;
+    console.log('RAW BODY:', JSON.stringify(data.slice(0, 300)));
     // First try parsing as-is
     try {
       req.body = JSON.parse(data);
