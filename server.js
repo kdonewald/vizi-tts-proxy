@@ -2,26 +2,34 @@ const express = require('express');
 const https = require('https');
 const app = express();
 
-// Raw body parser — tolerant of newlines injected by App Inventor
+// Raw body parser — handles App Inventor PostText quirks
+// App Inventor prepends "text: " to the body, so we strip it
 app.use((req, res, next) => {
   let data = '';
   req.on('data', chunk => { data += chunk; });
   req.on('end', () => {
     req.rawBody = data;
     console.log('RAW BODY:', JSON.stringify(data.slice(0, 300)));
-    // First try parsing as-is
+
+    let cleaned = data.trim();
+
+    // Strip App Inventor "text: " prefix
+    if (cleaned.startsWith('text: ')) {
+      cleaned = cleaned.slice(6);
+    } else if (cleaned.startsWith('text=')) {
+      cleaned = decodeURIComponent(cleaned.slice(5).replace(/\+/g, ' '));
+    }
+
+    // Replace literal newlines
+    cleaned = cleaned.replace(/[\r\n]+/g, ' ');
+
     try {
-      req.body = JSON.parse(data);
-      return next();
-    } catch(e) { /* fall through */ }
-    // Replace literal newlines inside JSON string values and retry
-    try {
-      const cleaned = data.replace(/[\r\n]+/g, ' ');
       req.body = JSON.parse(cleaned);
       return next();
     } catch(e) { /* fall through */ }
-    // Last resort - treat entire body as text
-    req.body = { text: data };
+
+    // Last resort
+    req.body = { text: cleaned };
     next();
   });
 });
@@ -131,7 +139,7 @@ app.post('/claude', (req, res) => {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
   }
 
-  // Sanitize - remove any stray newlines that survived body parsing
+  // Sanitize - remove any stray newlines
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
   // Build system string
