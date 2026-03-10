@@ -2,6 +2,7 @@ const express = require('express');
 const https = require('https');
 const app = express();
 
+// Raw body parser for TTS endpoints
 app.use((req, res, next) => {
   let data = '';
   req.on('data', chunk => { data += chunk; });
@@ -16,30 +17,33 @@ app.use((req, res, next) => {
   });
 });
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-const VOICE_NAME = process.env.VOICE_NAME || 'en-US-Neural2-F';
-const LANGUAGE_CODE = 'en-US';
+const GOOGLE_API_KEY  = process.env.GOOGLE_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const VOICE_NAME      = process.env.VOICE_NAME || 'en-US-Neural2-F';
+const LANGUAGE_CODE   = 'en-US';
+const SYSTEM_PROMPT   = process.env.SYSTEM_PROMPT  || 'You are Vizi, an AI guitar tutor.';
+const REMINDER_PROMPT = process.env.REMINDER_PROMPT || '';
 
+// ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'Vizi TTS Proxy running', voice: VOICE_NAME });
+  res.json({
+    status: 'Vizi TTS Proxy running',
+    voice: VOICE_NAME,
+    claudeReady: !!ANTHROPIC_API_KEY
+  });
 });
 
+// ── Google TTS ────────────────────────────────────────────────────────────────
 function synthesize(text, res) {
   console.log('Synthesizing:', text);
-
   if (!GOOGLE_API_KEY) {
     return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
   }
 
   const requestBody = JSON.stringify({
-    input: { text: text },
-    voice: {
-      languageCode: LANGUAGE_CODE,
-      name: VOICE_NAME
-    },
-    audioConfig: {
-      audioEncoding: 'MP3'
-    }
+    input: { text },
+    voice: { languageCode: LANGUAGE_CODE, name: VOICE_NAME },
+    audioConfig: { audioEncoding: 'MP3' }
   });
 
   const options = {
@@ -54,7 +58,7 @@ function synthesize(text, res) {
 
   const googleReq = https.request(options, (googleRes) => {
     let data = '';
-    googleRes.on('data', (chunk) => { data += chunk; });
+    googleRes.on('data', chunk => { data += chunk; });
     googleRes.on('end', () => {
       try {
         const parsed = JSON.parse(data);
@@ -74,7 +78,7 @@ function synthesize(text, res) {
     });
   });
 
-  googleReq.on('error', (err) => {
+  googleReq.on('error', err => {
     res.status(500).json({ error: 'Google TTS request failed', detail: err.message });
   });
 
@@ -85,33 +89,102 @@ function synthesize(text, res) {
 app.get('/tts', (req, res) => {
   const text = req.query.text;
   console.log('GET /tts text:', text);
-  if (!text) {
-    return res.status(400).json({ error: 'Missing text parameter' });
-  }
+  if (!text) return res.status(400).json({ error: 'Missing text parameter' });
   synthesize(text, res);
 });
 
 app.post('/tts', (req, res) => {
   let text;
   if (typeof req.body === 'string') {
-    try {
-      const parsed = JSON.parse(req.body);
-      text = parsed.text;
-    } catch(e) {
-      text = req.body;
-    }
+    try { text = JSON.parse(req.body).text; } catch(e) { text = req.body; }
   } else {
-    text = req.body ? req.body.text : undefined;
+    text = req.body?.text;
   }
   console.log('POST /tts text:', text);
-  if (!text) {
-    return res.status(400).json({ error: 'Missing text parameter' });
-  }
+  if (!text) return res.status(400).json({ error: 'Missing text parameter' });
   synthesize(text, res);
 });
 
+// ── Claude API proxy ──────────────────────────────────────────────────────────
+// POST /claude
+// Request body:  { "message": "<student text>", "mode": "lesson"|"talk" }
+// Response body: { "text": "<Vizi response>" }
+//
+// mode = "lesson" → uses SYSTEM_PROMPT only (lesson start, Call_Tutor_Prompt
+//                   should be included in the message field by App Inventor)
+// mode = "talk"   → appends REMINDER_PROMPT to system field for ongoing turns
+//
+app.post('/claude', (req, res) => {
+  const { message, mode } = req.body || {};
+
+  console.log('POST /claude mode:', mode, 'message:', message?.slice(0, 80));
+
+  if (!message) {
+    return res.status(400).json({ error: 'Missing message' });
+  }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  }
+
+  // Build system string — reminder appended for ongoing talk turns
+  const systemText = (mode === 'talk' && REMINDER_PROMPT)
+    ? SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT
+    : SYSTEM_PROMPT;
+
+  const claudeBody = JSON.stringify({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 1000,
+    system: systemText,
+    messages: [{ role: 'user', content: message }]
+  });
+
+  const options = {
+    hostname: 'api.anthropic.com',
+    path: '/v1/messages',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Length': Buffer.byteLength(claudeBody)
+    }
+  };
+
+  const claudeReq = https.request(options, (claudeRes) => {
+    let data = '';
+    claudeRes.on('data', chunk => { data += chunk; });
+    claudeRes.on('end', () => {
+      console.log('Claude status:', claudeRes.statusCode);
+      try {
+        const parsed = JSON.parse(data);
+        if (claudeRes.statusCode !== 200) {
+          console.error('Claude error:', data);
+          return res.status(claudeRes.statusCode).json({
+            error: 'Claude API error',
+            detail: parsed
+          });
+        }
+        const text = parsed.content?.[0]?.text || '';
+        res.json({ text });
+      } catch (err) {
+        res.status(500).json({ error: 'Parse error', detail: err.message });
+      }
+    });
+  });
+
+  claudeReq.on('error', err => {
+    console.error('Claude request error:', err.message);
+    res.status(500).json({ error: 'Claude request failed', detail: err.message });
+  });
+
+  claudeReq.write(claudeBody);
+  claudeReq.end();
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('Vizi TTS Proxy listening on port ' + PORT);
-  console.log('Voice: ' + VOICE_NAME);
+  console.log('Voice:', VOICE_NAME);
+  console.log('Claude ready:', !!ANTHROPIC_API_KEY);
 });
