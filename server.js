@@ -57,8 +57,18 @@ function synthesize(text, res) {
     return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
   }
 
+  // Escape special XML characters so SSML stays valid
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Wrap in SSML and append 1500ms silence so playback ends cleanly
+  // before App Inventor's stop/completed event fires
+  const ssml = `<speak>${escaped}<break time="1500ms"/></speak>`;
+
   const requestBody = JSON.stringify({
-    input: { text },
+    input: { ssml },
     voice: { languageCode: LANGUAGE_CODE, name: VOICE_NAME },
     audioConfig: { audioEncoding: 'MP3' }
   });
