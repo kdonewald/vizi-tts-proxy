@@ -50,25 +50,15 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Google TTS
+// Google TTS — plain text, no SSML
 function synthesize(text, res) {
-  console.log('Synthesizing:', text);
+  console.log('Synthesizing:', text.slice(0, 80));
   if (!GOOGLE_API_KEY) {
     return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
   }
 
-  // Escape special XML characters so SSML stays valid
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // Wrap in SSML and append 1500ms silence so playback ends cleanly
-  // before App Inventor's stop/completed event fires
-  const ssml = `<speak>${escaped}<break time="1500ms"/></speak>`;
-
   const requestBody = JSON.stringify({
-    input: { ssml },
+    input: { text },
     voice: { languageCode: LANGUAGE_CODE, name: VOICE_NAME },
     audioConfig: { audioEncoding: 'MP3' }
   });
@@ -90,6 +80,7 @@ function synthesize(text, res) {
       try {
         const parsed = JSON.parse(data);
         if (!parsed.audioContent) {
+          console.error('TTS error response:', JSON.stringify(parsed));
           return res.status(500).json({ error: 'No audio returned', detail: parsed });
         }
         const audioBuffer = Buffer.from(parsed.audioContent, 'base64');
@@ -113,13 +104,18 @@ function synthesize(text, res) {
   googleReq.end();
 }
 
+// GET /tts — kept for backward compatibility but logs a warning
 app.get('/tts', (req, res) => {
   const text = req.query.text;
-  console.log('GET /tts text:', text);
+  console.log('GET /tts text length:', text && text.length);
   if (!text) return res.status(400).json({ error: 'Missing text parameter' });
+  if (text.length > 500) {
+    console.warn('WARNING: GET /tts text is very long (' + text.length + ' chars) — consider switching to POST');
+  }
   synthesize(text, res);
 });
 
+// POST /tts — preferred method, no URL length limit
 app.post('/tts', (req, res) => {
   let text;
   if (typeof req.body === 'string') {
@@ -127,7 +123,7 @@ app.post('/tts', (req, res) => {
   } else {
     text = req.body && req.body.text;
   }
-  console.log('POST /tts text:', text);
+  console.log('POST /tts text length:', text && text.length);
   if (!text) return res.status(400).json({ error: 'Missing text parameter' });
   synthesize(text, res);
 });
@@ -158,7 +154,7 @@ app.post('/claude', (req, res) => {
     : SYSTEM_PROMPT;
 
   const claudeBody = JSON.stringify({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 1000,
     system: systemText,
     messages: [{ role: 'user', content: message }]
