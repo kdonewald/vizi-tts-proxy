@@ -2,6 +2,16 @@ const express = require('express');
 const https = require('https');
 const app = express();
 
+// ─── Keep-Alive agent for Google TTS ────────────────────────────────────────
+// Reuses the TCP+TLS connection to Google between requests, saving ~70-150ms
+// per TTS call after the first one during an active lesson session.
+const googleAgent = new https.Agent({
+  keepAlive: true,       // don't close connections after use
+  maxSockets: 4,         // max parallel connections to Google TTS
+  keepAliveMsecs: 30000  // send keepalive ping every 30s to prevent idle close
+});
+// ────────────────────────────────────────────────────────────────────────────
+
 // Raw body parser — handles App Inventor PostText quirks
 // App Inventor prepends "text: " to the body, so we strip it
 app.use((req, res, next) => {
@@ -46,7 +56,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'Vizi TTS Proxy running',
     voice: VOICE_NAME,
-    model: 'claude-haiku-4-5-20251001',  ← add this
+    model: 'claude-haiku-4-5-20251001',
     claudeReady: !!ANTHROPIC_API_KEY
   });
 });
@@ -68,6 +78,7 @@ function synthesize(text, res) {
     hostname: 'texttospeech.googleapis.com',
     path: '/v1/text:synthesize?key=' + encodeURIComponent(GOOGLE_API_KEY),
     method: 'POST',
+    agent: googleAgent,  // ← keep-alive connection reuse
     headers: {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(requestBody)
