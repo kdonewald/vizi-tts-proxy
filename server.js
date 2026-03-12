@@ -46,6 +46,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'Vizi TTS Proxy running',
     voice: VOICE_NAME,
+    model: 'claude-haiku-4-5-20251001',  ← add this
     claudeReady: !!ANTHROPIC_API_KEY
   });
 });
