@@ -3,17 +3,40 @@ const https = require('https');
 const app = express();
 
 // ─── Keep-Alive agent for Google TTS ────────────────────────────────────────
-// Reuses the TCP+TLS connection to Google between requests, saving ~70-150ms
-// per TTS call after the first one during an active lesson session.
 const googleAgent = new https.Agent({
-  keepAlive: true,       // don't close connections after use
-  maxSockets: 4,         // max parallel connections to Google TTS
-  keepAliveMsecs: 30000  // send keepalive ping every 30s to prevent idle close
+  keepAlive: true,
+  maxSockets: 4,
+  keepAliveMsecs: 30000
 });
+
+// ─── Conversation History ────────────────────────────────────────────────────
+// Maintains the last 6 messages (3 exchanges) so Claude has context.
+// Single-student assumption — fine for current Vizi usage.
+// Resets automatically after 10 minutes of inactivity.
+const MAX_HISTORY     = 6;
+const HISTORY_TTL_MS  = 10 * 60 * 1000; // 10 minutes idle reset
+
+let conversationHistory = [];
+let lastActivityTime    = Date.now();
+
+function addToHistory(role, content) {
+  conversationHistory.push({ role, content });
+  if (conversationHistory.length > MAX_HISTORY) {
+    conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+  }
+  lastActivityTime = Date.now();
+}
+
+function getHistory() {
+  if (Date.now() - lastActivityTime > HISTORY_TTL_MS) {
+    console.log('History TTL expired — resetting conversation');
+    conversationHistory = [];
+  }
+  return conversationHistory;
+}
 // ────────────────────────────────────────────────────────────────────────────
 
 // Raw body parser — handles App Inventor PostText quirks
-// App Inventor prepends "text: " to the body, so we strip it
 app.use((req, res, next) => {
   let data = '';
   req.on('data', chunk => { data += chunk; });
@@ -23,14 +46,12 @@ app.use((req, res, next) => {
 
     let cleaned = data.trim();
 
-    // Strip App Inventor "text: " prefix
     if (cleaned.startsWith('text: ')) {
       cleaned = cleaned.slice(6);
     } else if (cleaned.startsWith('text=')) {
       cleaned = decodeURIComponent(cleaned.slice(5).replace(/\+/g, ' '));
     }
 
-    // Replace literal newlines
     cleaned = cleaned.replace(/[\r\n]+/g, ' ');
 
     try {
@@ -38,7 +59,6 @@ app.use((req, res, next) => {
       return next();
     } catch(e) { /* fall through */ }
 
-    // Last resort
     req.body = { text: cleaned };
     next();
   });
@@ -51,17 +71,37 @@ const LANGUAGE_CODE     = 'en-US';
 const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT  || 'You are Vizi, an AI guitar tutor.';
 const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
 
-// Health check
+// Health check — now shows history state
 app.get('/health', (req, res) => {
   res.json({
     status: 'Vizi TTS Proxy running',
     voice: VOICE_NAME,
     model: 'claude-haiku-4-5-20251001',
-    claudeReady: !!ANTHROPIC_API_KEY
+    claudeReady: !!ANTHROPIC_API_KEY,
+    historyLength: conversationHistory.length,
+    historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000)
   });
 });
 
-// Google TTS — plain text, no SSML
+// ─── Reset endpoint ──────────────────────────────────────────────────────────
+// POST or GET /reset — clears conversation history.
+// Call this at the start of each new lesson session from App Inventor.
+app.post('/reset', (req, res) => {
+  conversationHistory = [];
+  lastActivityTime = Date.now();
+  console.log('Conversation history reset via POST');
+  res.json({ status: 'ok', message: 'Conversation history cleared' });
+});
+
+app.get('/reset', (req, res) => {
+  conversationHistory = [];
+  lastActivityTime = Date.now();
+  console.log('Conversation history reset via GET');
+  res.json({ status: 'ok', message: 'Conversation history cleared' });
+});
+// ────────────────────────────────────────────────────────────────────────────
+
+// Google TTS
 function synthesize(text, res) {
   console.log('Synthesizing:', text.slice(0, 80));
   if (!GOOGLE_API_KEY) {
@@ -78,7 +118,7 @@ function synthesize(text, res) {
     hostname: 'texttospeech.googleapis.com',
     path: '/v1/text:synthesize?key=' + encodeURIComponent(GOOGLE_API_KEY),
     method: 'POST',
-    agent: googleAgent,  // ← keep-alive connection reuse
+    agent: googleAgent,
     headers: {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(requestBody)
@@ -116,18 +156,18 @@ function synthesize(text, res) {
   googleReq.end();
 }
 
-// GET /tts — kept for backward compatibility but logs a warning
+// GET /tts — backward compatibility
 app.get('/tts', (req, res) => {
   const text = req.query.text;
   console.log('GET /tts text length:', text && text.length);
   if (!text) return res.status(400).json({ error: 'Missing text parameter' });
   if (text.length > 500) {
-    console.warn('WARNING: GET /tts text is very long (' + text.length + ' chars) — consider switching to POST');
+    console.warn('WARNING: GET /tts text is very long (' + text.length + ' chars)');
   }
   synthesize(text, res);
 });
 
-// POST /tts — preferred method, no URL length limit
+// POST /tts — preferred
 app.post('/tts', (req, res) => {
   let text;
   if (typeof req.body === 'string') {
@@ -140,7 +180,7 @@ app.post('/tts', (req, res) => {
   synthesize(text, res);
 });
 
-// Claude API proxy
+// ─── Claude API proxy with conversation history ──────────────────────────────
 // POST /claude
 // Request:  { "message": "<student text>", "mode": "lesson"|"talk" }
 // Response: { "text": "<Vizi response>" }
@@ -157,7 +197,7 @@ app.post('/claude', (req, res) => {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
   }
 
-  // Sanitize - remove any stray newlines
+  // Sanitize
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
   // Build system string
@@ -165,11 +205,20 @@ app.post('/claude', (req, res) => {
     ? SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT
     : SYSTEM_PROMPT;
 
+  // Check TTL then append new user message to history
+  getHistory();
+  addToHistory('user', message);
+
+  // Snapshot current history to send to Claude
+  const messages = [...conversationHistory];
+
+  console.log('Sending', messages.length, 'messages to Claude (history depth:', messages.length - 1, ')');
+
   const claudeBody = JSON.stringify({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1000,
     system: systemText,
-    messages: [{ role: 'user', content: message }]
+    messages: messages
   });
 
   const options = {
@@ -193,14 +242,22 @@ app.post('/claude', (req, res) => {
         const parsed = JSON.parse(data);
         if (claudeRes.statusCode !== 200) {
           console.error('Claude error:', data);
+          // Remove the user message we just added so history stays clean
+          conversationHistory.pop();
           return res.status(claudeRes.statusCode).json({
             error: 'Claude API error',
             detail: parsed
           });
         }
         const text = parsed.content && parsed.content[0] && parsed.content[0].text || '';
+
+        // Add Claude's reply to history
+        addToHistory('assistant', text);
+        console.log('History now', conversationHistory.length, 'messages');
+
         res.json({ text });
       } catch (err) {
+        conversationHistory.pop();
         res.status(500).json({ error: 'Parse error', detail: err.message });
       }
     });
@@ -208,12 +265,14 @@ app.post('/claude', (req, res) => {
 
   claudeReq.on('error', err => {
     console.error('Claude request error:', err.message);
+    conversationHistory.pop();
     res.status(500).json({ error: 'Claude request failed', detail: err.message });
   });
 
   claudeReq.write(claudeBody);
   claudeReq.end();
 });
+// ────────────────────────────────────────────────────────────────────────────
 
 // Start
 const PORT = process.env.PORT || 3000;
