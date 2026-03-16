@@ -3,6 +3,15 @@ const https   = require('https');
 const crypto  = require('crypto');
 const app     = express();
 
+// ─── CORS — allow aivisualguitar.com to call this server ────────────────────
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 // ─── multer for multipart file uploads (song upload endpoint) ───────────────
 let multer;
 try { multer = require('multer'); } catch(e) { multer = null; }
