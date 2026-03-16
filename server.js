@@ -1,6 +1,12 @@
 const express = require('express');
-const https = require('https');
-const app = express();
+const https   = require('https');
+const crypto  = require('crypto');
+const app     = express();
+
+// ─── multer for multipart file uploads (song upload endpoint) ───────────────
+let multer;
+try { multer = require('multer'); } catch(e) { multer = null; }
+const upload = multer ? multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }) : null;
 
 // ─── Keep-Alive agent for Google TTS ────────────────────────────────────────
 const googleAgent = new https.Agent({
@@ -10,11 +16,8 @@ const googleAgent = new https.Agent({
 });
 
 // ─── Conversation History ────────────────────────────────────────────────────
-// Maintains the last 6 messages (3 exchanges) so Claude has context.
-// Single-student assumption — fine for current Vizi usage.
-// Resets automatically after 10 minutes of inactivity.
 const MAX_HISTORY     = 6;
-const HISTORY_TTL_MS  = 10 * 60 * 1000; // 10 minutes idle reset
+const HISTORY_TTL_MS  = 10 * 60 * 1000;
 
 let conversationHistory = [];
 let lastActivityTime    = Date.now();
@@ -34,10 +37,57 @@ function getHistory() {
   }
   return conversationHistory;
 }
+
+// ─── Song Sessions (in-memory) ───────────────────────────────────────────────
+// sessions[id] = {
+//   status: 'waiting' | 'processing' | 'ready' | 'error',
+//   createdAt: timestamp,
+//   songTitle: string,          // e.g. "Let It Be"
+//   type: 'chords' | 'tab' | 'mixed' | null,
+//   chords: string[],           // e.g. ['G','Em','C','D']
+//   progression: string,        // e.g. "[Verse] G Em C D | [Chorus] C G Am F"
+//   tabTokens: string[],        // SF token groups for tab sections
+//   rawText: string,            // extracted text from image/file
+//   error: string | null
+// }
+const sessions = {};
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function cleanOldSessions() {
+  const now = Date.now();
+  for (const id in sessions) {
+    if (now - sessions[id].createdAt > SESSION_TTL_MS) {
+      delete sessions[id];
+    }
+  }
+}
+
+function createSession(songTitle = '') {
+  cleanOldSessions();
+  const id = crypto.randomBytes(3).toString('hex').toUpperCase(); // e.g. "A3F9C2"
+  sessions[id] = {
+    status: 'waiting',
+    createdAt: Date.now(),
+    songTitle,
+    type: null,
+    chords: [],
+    progression: '',
+    tabTokens: [],
+    rawText: '',
+    error: null
+  };
+  return id;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
-// Raw body parser — handles App Inventor PostText quirks
+// ─── Raw body parser (handles App Inventor PostText quirks) ─────────────────
 app.use((req, res, next) => {
+  // Skip for multipart (multer handles those)
+  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+    return next();
+  }
+
   let data = '';
   req.on('data', chunk => { data += chunk; });
   req.on('end', () => {
@@ -71,7 +121,7 @@ const LANGUAGE_CODE     = 'en-US';
 const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT  || 'You are Vizi, an AI guitar tutor.';
 const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
 
-// Health check — now shows history state
+// ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
     status: 'Vizi TTS Proxy running',
@@ -79,13 +129,13 @@ app.get('/health', (req, res) => {
     model: 'claude-haiku-4-5-20251001',
     claudeReady: !!ANTHROPIC_API_KEY,
     historyLength: conversationHistory.length,
-    historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000)
+    historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
+    activeSessions: Object.keys(sessions).length,
+    multerReady: !!multer
   });
 });
 
-// ─── Reset endpoint ──────────────────────────────────────────────────────────
-// POST or GET /reset — clears conversation history.
-// Call this at the start of each new lesson session from App Inventor.
+// ─── Reset ───────────────────────────────────────────────────────────────────
 app.post('/reset', (req, res) => {
   conversationHistory = [];
   lastActivityTime = Date.now();
@@ -99,9 +149,8 @@ app.get('/reset', (req, res) => {
   console.log('Conversation history reset via GET');
   res.json({ status: 'ok', message: 'Conversation history cleared' });
 });
-// ────────────────────────────────────────────────────────────────────────────
 
-// Google TTS
+// ─── Google TTS ──────────────────────────────────────────────────────────────
 function synthesize(text, res) {
   console.log('Synthesizing:', text.slice(0, 80));
   if (!GOOGLE_API_KEY) {
@@ -156,7 +205,6 @@ function synthesize(text, res) {
   googleReq.end();
 }
 
-// GET /tts — backward compatibility
 app.get('/tts', (req, res) => {
   const text = req.query.text;
   console.log('GET /tts text length:', text && text.length);
@@ -167,7 +215,6 @@ app.get('/tts', (req, res) => {
   synthesize(text, res);
 });
 
-// POST /tts — preferred
 app.post('/tts', (req, res) => {
   let text;
   if (typeof req.body === 'string') {
@@ -180,10 +227,7 @@ app.post('/tts', (req, res) => {
   synthesize(text, res);
 });
 
-// ─── Claude API proxy with conversation history ──────────────────────────────
-// POST /claude
-// Request:  { "message": "<student text>", "mode": "lesson"|"talk" }
-// Response: { "text": "<Vizi response>" }
+// ─── Claude API proxy ────────────────────────────────────────────────────────
 app.post('/claude', (req, res) => {
   let message = req.body && req.body.message;
   const mode  = req.body && req.body.mode;
@@ -197,19 +241,15 @@ app.post('/claude', (req, res) => {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
   }
 
-  // Sanitize
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
-  // Build system string
   const systemText = (mode === 'talk' && REMINDER_PROMPT)
     ? SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT
     : SYSTEM_PROMPT;
 
-  // Check TTL then append new user message to history
   getHistory();
   addToHistory('user', message);
 
-  // Snapshot current history to send to Claude
   const messages = [...conversationHistory];
 
   console.log('Sending', messages.length, 'messages to Claude (history depth:', messages.length - 1, ')');
@@ -242,7 +282,6 @@ app.post('/claude', (req, res) => {
         const parsed = JSON.parse(data);
         if (claudeRes.statusCode !== 200) {
           console.error('Claude error:', data);
-          // Remove the user message we just added so history stays clean
           conversationHistory.pop();
           return res.status(claudeRes.statusCode).json({
             error: 'Claude API error',
@@ -250,11 +289,8 @@ app.post('/claude', (req, res) => {
           });
         }
         const text = parsed.content && parsed.content[0] && parsed.content[0].text || '';
-
-        // Add Claude's reply to history
         addToHistory('assistant', text);
         console.log('History now', conversationHistory.length, 'messages');
-
         res.json({ text });
       } catch (err) {
         conversationHistory.pop();
@@ -272,12 +308,302 @@ app.post('/claude', (req, res) => {
   claudeReq.write(claudeBody);
   claudeReq.end();
 });
-// ────────────────────────────────────────────────────────────────────────────
 
-// Start
+// ════════════════════════════════════════════════════════════════════════════
+// ─── SONG SESSION ENDPOINTS (new) ───────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+
+// POST /session-create
+// Called by App Inventor / StackChan when student asks to play a song.
+// Body: { "songTitle": "Let It Be" }   (optional)
+// Returns: { "sessionId": "A3F9C2", "uploadUrl": "https://aivisualguitar.com/upload?session=A3F9C2" }
+app.post('/session-create', (req, res) => {
+  const songTitle = (req.body && req.body.songTitle) || '';
+  const id = createSession(songTitle);
+  console.log('Session created:', id, 'song:', songTitle);
+  res.json({
+    sessionId: id,
+    uploadUrl: `https://aivisualguitar.com/upload?session=${id}`,
+    qrContent: `https://aivisualguitar.com/upload?session=${id}`
+  });
+});
+
+// GET /session-create  (convenience — App Inventor can use GetText with query param)
+// ?song=Let+It+Be
+app.get('/session-create', (req, res) => {
+  const songTitle = req.query.song || '';
+  const id = createSession(songTitle);
+  console.log('Session created (GET):', id, 'song:', songTitle);
+  res.json({
+    sessionId: id,
+    uploadUrl: `https://aivisualguitar.com/upload?session=${id}`,
+    qrContent: `https://aivisualguitar.com/upload?session=${id}`
+  });
+});
+
+// GET /session-status/:id
+// Polled by App Inventor / StackChan to check if student has uploaded.
+// Returns full session data once ready.
+app.get('/session-status/:id', (req, res) => {
+  const id = req.params.id.toUpperCase();
+  const session = sessions[id];
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found', id });
+  }
+  res.json({
+    sessionId: id,
+    status: session.status,         // 'waiting' | 'processing' | 'ready' | 'error'
+    songTitle: session.songTitle,
+    type: session.type,             // 'chords' | 'tab' | 'mixed' | null
+    chords: session.chords,         // ['G','Em','C','D']
+    progression: session.progression,
+    tabTokens: session.tabTokens,
+    error: session.error
+  });
+});
+
+// POST /song-upload
+// Called by the aivisualguitar.com upload page.
+// Accepts: multipart form with 'file' (image/pdf) OR 'text' field (pasted chords).
+// Also accepts: { session, text } as JSON (text paste fallback).
+app.post('/song-upload', (req, res, next) => {
+  // Try multer first for file uploads
+  if (!multer) {
+    return res.status(500).json({ error: 'File upload not available — multer not installed' });
+  }
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Multer error:', err.message);
+      return res.status(400).json({ error: 'File upload error', detail: err.message });
+    }
+    handleSongUpload(req, res);
+  });
+});
+
+async function handleSongUpload(req, res) {
+  const sessionId = (req.body && req.body.session) || (req.query && req.query.session);
+  const pastedText = req.body && req.body.text;
+  const file = req.file;
+
+  console.log('Song upload — session:', sessionId, 'hasFile:', !!file, 'hasText:', !!pastedText);
+
+  if (!sessionId) {
+    return res.status(400).json({ error: 'Missing session ID' });
+  }
+
+  const id = sessionId.toUpperCase();
+  const session = sessions[id];
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found or expired', id });
+  }
+
+  if (!file && !pastedText) {
+    return res.status(400).json({ error: 'No file or text provided' });
+  }
+
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  }
+
+  // Mark as processing
+  session.status = 'processing';
+
+  try {
+    let claudeContent = [];
+    let contentDescription = '';
+
+    if (file) {
+      // Image or PDF — send to Claude Vision
+      const mimeType = file.mimetype || 'image/jpeg';
+      const base64Data = file.buffer.toString('base64');
+
+      if (mimeType === 'application/pdf') {
+        // PDF as document
+        claudeContent = [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: base64Data }
+          },
+          { type: 'text', text: buildAnalysisPrompt(session.songTitle) }
+        ];
+      } else {
+        // Image (photo of sheet music, chord chart, tab)
+        claudeContent = [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: mimeType, data: base64Data }
+          },
+          { type: 'text', text: buildAnalysisPrompt(session.songTitle) }
+        ];
+      }
+      contentDescription = `${mimeType} file (${Math.round(file.size/1024)}KB)`;
+    } else {
+      // Pasted text
+      claudeContent = [
+        { type: 'text', text: buildTextAnalysisPrompt(pastedText, session.songTitle) }
+      ];
+      contentDescription = `pasted text (${pastedText.length} chars)`;
+    }
+
+    console.log('Sending to Claude Vision:', contentDescription);
+
+    // Call Claude API
+    const claudeBody = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1500,
+      system: `You are a music analysis assistant for the Vizi AI guitar tutor system.
+Your job is to extract chord and tab information from uploaded music and return it as structured JSON.
+Always respond with ONLY valid JSON — no markdown, no explanation, no code fences.`,
+      messages: [{ role: 'user', content: claudeContent }]
+    });
+
+    const result = await callClaudeAPI(claudeBody);
+    const parsed = parseClaudeAnalysis(result);
+
+    // Store in session
+    session.type        = parsed.type;
+    session.chords      = parsed.chords || [];
+    session.progression = parsed.progression || '';
+    session.tabTokens   = parsed.tabTokens || [];
+    session.rawText     = parsed.rawText || '';
+    session.songTitle   = parsed.songTitle || session.songTitle;
+    session.status      = 'ready';
+
+    console.log('Session', id, 'ready — type:', session.type, 'chords:', session.chords.join(','));
+
+    res.json({
+      status: 'ready',
+      sessionId: id,
+      type: session.type,
+      chords: session.chords,
+      progression: session.progression,
+      message: 'Song uploaded successfully. Vizi is ready!'
+    });
+
+  } catch (err) {
+    console.error('Song upload error:', err.message);
+    session.status = 'error';
+    session.error  = err.message;
+    res.status(500).json({ error: 'Failed to process upload', detail: err.message });
+  }
+}
+
+// ─── Prompt builders ─────────────────────────────────────────────────────────
+
+function buildAnalysisPrompt(songTitle) {
+  return `Analyze this image of sheet music, a chord chart, or guitar tab.
+${songTitle ? `The song is "${songTitle}".` : ''}
+
+Return ONLY this JSON structure (no markdown, no explanation):
+{
+  "songTitle": "song name if visible or provided",
+  "type": "chords",
+  "chords": ["G","Em","C","D"],
+  "progression": "[Verse] G Em C D | [Chorus] C G Am F",
+  "tabTokens": [],
+  "rawText": "any text you extracted"
+}
+
+RULES:
+- "type" must be "chords" if it's a chord chart/lead sheet, "tab" if it's guitar tablature with string/fret numbers, or "mixed" if both.
+- "chords" must use standard chord names: G, Am, C7, F#m, Bm, D/F#, etc.
+- "progression" should preserve section labels like [Verse], [Chorus] if visible.
+- "tabTokens" should only be populated for "tab" or "mixed" type. Each entry is a group of string-fret tokens like ["SHe2","SB3"] for simultaneous notes or ["SHe2"] for single notes. Use string codes: He=high E, B, G, D, A, Le=low E.
+- If you cannot read the image clearly, return type:"chords" with empty chords array and explain in rawText.`;
+}
+
+function buildTextAnalysisPrompt(text, songTitle) {
+  return `Analyze this guitar chord chart or tab text.
+${songTitle ? `The song is "${songTitle}".` : ''}
+
+TEXT:
+${text}
+
+Return ONLY this JSON structure (no markdown, no explanation):
+{
+  "songTitle": "song name if visible or provided",
+  "type": "chords",
+  "chords": ["G","Em","C","D"],
+  "progression": "[Verse] G Em C D | [Chorus] C G Am F",
+  "tabTokens": [],
+  "rawText": "${text.replace(/"/g, "'").slice(0, 200)}"
+}
+
+RULES:
+- "type" must be "chords" if it's a chord chart, "tab" if it's guitar tablature, or "mixed" if both.
+- "chords" must list every unique chord used, using standard names.
+- "progression" should preserve the full chord sequence with section labels if present.
+- "tabTokens" only for tab sections — each entry is an array of SF tokens like ["SHe2","SB3"].
+- String codes: He=high E, B, G, D, A, Le=low E.`;
+}
+
+// ─── Claude API helper (Promise-based) ───────────────────────────────────────
+
+function callClaudeAPI(claudeBody) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(claudeBody)
+      }
+    };
+
+    const req = https.request(options, (claudeRes) => {
+      let data = '';
+      claudeRes.on('data', chunk => { data += chunk; });
+      claudeRes.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (claudeRes.statusCode !== 200) {
+            return reject(new Error(`Claude API ${claudeRes.statusCode}: ${JSON.stringify(parsed)}`));
+          }
+          const text = parsed.content && parsed.content[0] && parsed.content[0].text || '';
+          resolve(text);
+        } catch (err) {
+          reject(new Error('Parse error: ' + err.message));
+        }
+      });
+    });
+
+    req.on('error', err => reject(err));
+    req.write(claudeBody);
+    req.end();
+  });
+}
+
+// ─── Parse Claude's JSON response ────────────────────────────────────────────
+
+function parseClaudeAnalysis(text) {
+  // Strip any accidental markdown fences
+  const clean = text.replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(clean);
+  } catch(e) {
+    console.error('Failed to parse Claude analysis JSON:', clean.slice(0, 200));
+    // Return safe fallback
+    return {
+      type: 'chords',
+      chords: [],
+      progression: '',
+      tabTokens: [],
+      rawText: text
+    };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ─── Start ──────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('Vizi TTS Proxy listening on port ' + PORT);
   console.log('Voice:', VOICE_NAME);
   console.log('Claude ready:', !!ANTHROPIC_API_KEY);
+  console.log('Multer ready:', !!multer);
 });
