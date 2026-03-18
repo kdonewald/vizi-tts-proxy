@@ -48,19 +48,8 @@ function getHistory() {
 }
 
 // ─── Song Sessions (in-memory) ───────────────────────────────────────────────
-// sessions[id] = {
-//   status: 'waiting' | 'processing' | 'ready' | 'error',
-//   createdAt: timestamp,
-//   songTitle: string,          // e.g. "Let It Be"
-//   type: 'chords' | 'tab' | 'mixed' | null,
-//   chords: string[],           // e.g. ['G','Em','C','D']
-//   progression: string,        // e.g. "[Verse] G Em C D | [Chorus] C G Am F"
-//   tabTokens: string[],        // SF token groups for tab sections
-//   rawText: string,            // extracted text from image/file
-//   error: string | null
-// }
 const sessions = {};
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const SESSION_TTL_MS = 30 * 60 * 1000;
 
 function cleanOldSessions() {
   const now = Date.now();
@@ -73,7 +62,7 @@ function cleanOldSessions() {
 
 function createSession(songTitle = '') {
   cleanOldSessions();
-  const id = crypto.randomBytes(3).toString('hex').toUpperCase(); // e.g. "A3F9C2"
+  const id = crypto.randomBytes(3).toString('hex').toUpperCase();
   sessions[id] = {
     status: 'waiting',
     createdAt: Date.now(),
@@ -88,11 +77,8 @@ function createSession(songTitle = '') {
   return id;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-
 // ─── Raw body parser (handles App Inventor PostText quirks) ─────────────────
 app.use((req, res, next) => {
-  // Skip for multipart (multer handles those)
   if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
     return next();
   }
@@ -123,12 +109,14 @@ app.use((req, res, next) => {
   });
 });
 
+// ─── Environment Variables ───────────────────────────────────────────────────
 const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const VOICE_NAME        = process.env.VOICE_NAME || 'en-US-Neural2-F';
+const VOICE_NAME        = process.env.VOICE_NAME      || 'en-US-Neural2-F';
 const LANGUAGE_CODE     = 'en-US';
-const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT  || 'You are Vizi, an AI guitar tutor.';
+const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
 const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
+const SONG_PROMPT       = process.env.SONG_PROMPT     || '';  // ← Song mode rules
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -140,7 +128,8 @@ app.get('/health', (req, res) => {
     historyLength: conversationHistory.length,
     historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
     activeSessions: Object.keys(sessions).length,
-    multerReady: !!multer
+    multerReady: !!multer,
+    songPromptReady: !!SONG_PROMPT   // ← confirms SONG_PROMPT env var is set
   });
 });
 
@@ -237,6 +226,11 @@ app.post('/tts', (req, res) => {
 });
 
 // ─── Claude API proxy ────────────────────────────────────────────────────────
+// Modes:
+//   "lesson" — SYSTEM_PROMPT only (default for regular tutoring)
+//   "talk"   — SYSTEM_PROMPT + REMINDER_PROMPT (for conversational mode)
+//   "song"   — SYSTEM_PROMPT + SONG_PROMPT (for song learning mode)
+// ─────────────────────────────────────────────────────────────────────────────
 app.post('/claude', (req, res) => {
   let message = req.body && req.body.message;
   const mode  = req.body && req.body.mode;
@@ -252,9 +246,21 @@ app.post('/claude', (req, res) => {
 
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
-  const systemText = (mode === 'talk' && REMINDER_PROMPT)
-    ? SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT
-    : SYSTEM_PROMPT;
+  // ─── Select system prompt based on mode ──────────────────────────────────
+  let systemText;
+  if (mode === 'song' && SONG_PROMPT) {
+    // Song mode: full song teaching rules appended
+    systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
+    console.log('Using SONG mode system prompt');
+  } else if (mode === 'talk' && REMINDER_PROMPT) {
+    // Talk mode: reminder prompt appended
+    systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
+    console.log('Using TALK mode system prompt');
+  } else {
+    // Default lesson mode: system prompt only
+    systemText = SYSTEM_PROMPT;
+    console.log('Using LESSON mode system prompt');
+  }
 
   getHistory();
   addToHistory('user', message);
@@ -319,13 +325,9 @@ app.post('/claude', (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// ─── SONG SESSION ENDPOINTS (new) ───────────────────────────────────────────
+// ─── SONG SESSION ENDPOINTS ──────────────────────────────────────────────────
 // ════════════════════════════════════════════════════════════════════════════
 
-// POST /session-create
-// Called by App Inventor / StackChan when student asks to play a song.
-// Body: { "songTitle": "Let It Be" }   (optional)
-// Returns: { "sessionId": "A3F9C2", "uploadUrl": "https://aivisualguitar.com/upload?session=A3F9C2" }
 app.post('/session-create', (req, res) => {
   const songTitle = (req.body && req.body.songTitle) || '';
   const id = createSession(songTitle);
@@ -337,8 +339,6 @@ app.post('/session-create', (req, res) => {
   });
 });
 
-// GET /session-create  (convenience — App Inventor can use GetText with query param)
-// ?song=Let+It+Be
 app.get('/session-create', (req, res) => {
   const songTitle = req.query.song || '';
   const id = createSession(songTitle);
@@ -350,9 +350,6 @@ app.get('/session-create', (req, res) => {
   });
 });
 
-// GET /session-status/:id
-// Polled by App Inventor / StackChan to check if student has uploaded.
-// Returns full session data once ready.
 app.get('/session-status/:id', (req, res) => {
   const id = req.params.id.toUpperCase();
   const session = sessions[id];
@@ -361,22 +358,17 @@ app.get('/session-status/:id', (req, res) => {
   }
   res.json({
     sessionId: id,
-    status: session.status,         // 'waiting' | 'processing' | 'ready' | 'error'
+    status: session.status,
     songTitle: session.songTitle,
-    type: session.type,             // 'chords' | 'tab' | 'mixed' | null
-    chords: session.chords,         // ['G','Em','C','D']
+    type: session.type,
+    chords: session.chords,
     progression: session.progression,
     tabTokens: session.tabTokens,
     error: session.error
   });
 });
 
-// POST /song-upload
-// Called by the aivisualguitar.com upload page.
-// Accepts: multipart form with 'file' (image/pdf) OR 'text' field (pasted chords).
-// Also accepts: { session, text } as JSON (text paste fallback).
 app.post('/song-upload', (req, res, next) => {
-  // Try multer first for file uploads
   if (!multer) {
     return res.status(500).json({ error: 'File upload not available — multer not installed' });
   }
@@ -390,31 +382,20 @@ app.post('/song-upload', (req, res, next) => {
 });
 
 async function handleSongUpload(req, res) {
-  const sessionId = (req.body && req.body.session) || (req.query && req.query.session);
+  const sessionId  = (req.body && req.body.session) || (req.query && req.query.session);
   const pastedText = req.body && req.body.text;
-  const file = req.file;
+  const file       = req.file;
 
   console.log('Song upload — session:', sessionId, 'hasFile:', !!file, 'hasText:', !!pastedText);
 
-  if (!sessionId) {
-    return res.status(400).json({ error: 'Missing session ID' });
-  }
+  if (!sessionId) return res.status(400).json({ error: 'Missing session ID' });
 
   const id = sessionId.toUpperCase();
   const session = sessions[id];
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found or expired', id });
-  }
+  if (!session) return res.status(404).json({ error: 'Session not found or expired', id });
+  if (!file && !pastedText) return res.status(400).json({ error: 'No file or text provided' });
+  if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
-  if (!file && !pastedText) {
-    return res.status(400).json({ error: 'No file or text provided' });
-  }
-
-  if (!ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
-  }
-
-  // Mark as processing
   session.status = 'processing';
 
   try {
@@ -422,41 +403,28 @@ async function handleSongUpload(req, res) {
     let contentDescription = '';
 
     if (file) {
-      // Image or PDF — send to Claude Vision
-      const mimeType = file.mimetype || 'image/jpeg';
+      const mimeType   = file.mimetype || 'image/jpeg';
       const base64Data = file.buffer.toString('base64');
 
       if (mimeType === 'application/pdf') {
-        // PDF as document
         claudeContent = [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: base64Data }
-          },
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } },
           { type: 'text', text: buildAnalysisPrompt(session.songTitle) }
         ];
       } else {
-        // Image (photo of sheet music, chord chart, tab)
         claudeContent = [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: mimeType, data: base64Data }
-          },
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } },
           { type: 'text', text: buildAnalysisPrompt(session.songTitle) }
         ];
       }
       contentDescription = `${mimeType} file (${Math.round(file.size/1024)}KB)`;
     } else {
-      // Pasted text
-      claudeContent = [
-        { type: 'text', text: buildTextAnalysisPrompt(pastedText, session.songTitle) }
-      ];
+      claudeContent      = [{ type: 'text', text: buildTextAnalysisPrompt(pastedText, session.songTitle) }];
       contentDescription = `pasted text (${pastedText.length} chars)`;
     }
 
     console.log('Sending to Claude Vision:', contentDescription);
 
-    // Call Claude API
     const claudeBody = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1500,
@@ -469,13 +437,12 @@ Always respond with ONLY valid JSON — no markdown, no explanation, no code fen
     const result = await callClaudeAPI(claudeBody);
     const parsed = parseClaudeAnalysis(result);
 
-    // Store in session
     session.type        = parsed.type;
-    session.chords      = parsed.chords || [];
+    session.chords      = parsed.chords      || [];
     session.progression = parsed.progression || '';
-    session.tabTokens   = parsed.tabTokens || [];
-    session.rawText     = parsed.rawText || '';
-    session.songTitle   = parsed.songTitle || session.songTitle;
+    session.tabTokens   = parsed.tabTokens   || [];
+    session.rawText     = parsed.rawText      || '';
+    session.songTitle   = parsed.songTitle    || session.songTitle;
     session.status      = 'ready';
 
     console.log('Session', id, 'ready — type:', session.type, 'chords:', session.chords.join(','));
@@ -514,7 +481,7 @@ Return ONLY this JSON structure (no markdown, no explanation):
 }
 
 RULES:
-- "type" must be "chords" if it's a chord chart/lead sheet, "tab" if it's guitar tablature with string/fret numbers, or "mixed" if both.
+- "type" must be "chords" if it is a chord chart/lead sheet, "tab" if it is guitar tablature with string/fret numbers, or "mixed" if both.
 - "chords" must use standard chord names: G, Am, C7, F#m, Bm, D/F#, etc.
 - "progression" should preserve section labels like [Verse], [Chorus] if visible.
 - "tabTokens" should only be populated for "tab" or "mixed" type. Each entry is a group of string-fret tokens like ["SHe2","SB3"] for simultaneous notes or ["SHe2"] for single notes. Use string codes: He=high E, B, G, D, A, Le=low E.
@@ -539,7 +506,7 @@ Return ONLY this JSON structure (no markdown, no explanation):
 }
 
 RULES:
-- "type" must be "chords" if it's a chord chart, "tab" if it's guitar tablature, or "mixed" if both.
+- "type" must be "chords" if it is a chord chart, "tab" if it is guitar tablature, or "mixed" if both.
 - "chords" must list every unique chord used, using standard names.
 - "progression" should preserve the full chord sequence with section labels if present.
 - "tabTokens" only for tab sections — each entry is an array of SF tokens like ["SHe2","SB3"].
@@ -588,25 +555,17 @@ function callClaudeAPI(claudeBody) {
 // ─── Parse Claude's JSON response ────────────────────────────────────────────
 
 function parseClaudeAnalysis(text) {
-  // Strip any accidental markdown fences
   const clean = text.replace(/```json|```/g, '').trim();
   try {
     return JSON.parse(clean);
   } catch(e) {
     console.error('Failed to parse Claude analysis JSON:', clean.slice(0, 200));
-    // Return safe fallback
-    return {
-      type: 'chords',
-      chords: [],
-      progression: '',
-      tabTokens: [],
-      rawText: text
-    };
+    return { type: 'chords', chords: [], progression: '', tabTokens: [], rawText: text };
   }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ─── Start ──────────────────────────────────────────────────────────────────
+// ─── Start ───────────────────────────────────────────────────────────────────
 // ════════════════════════════════════════════════════════════════════════════
 
 const PORT = process.env.PORT || 3000;
@@ -615,4 +574,5 @@ app.listen(PORT, () => {
   console.log('Voice:', VOICE_NAME);
   console.log('Claude ready:', !!ANTHROPIC_API_KEY);
   console.log('Multer ready:', !!multer);
+  console.log('Song prompt ready:', !!SONG_PROMPT);
 });
