@@ -72,6 +72,7 @@ function createSession(songTitle = '') {
     progression: '',
     tabTokens: [],
     rawText: '',
+    capo: 0,
     error: null
   };
   return id;
@@ -368,6 +369,50 @@ app.get('/session-status/:id', (req, res) => {
   });
 });
 
+// GET /session-prompt/:id
+// Called by App Inventor / StackChan when polling detects status = ready.
+// Returns a fully-built Claude message and mode — no complex JSON parsing needed by client.
+app.get('/session-prompt/:id', (req, res) => {
+  const id = req.params.id.toUpperCase();
+  const session = sessions[id];
+
+  if (!session) {
+    return res.status(404).json({ ready: false, error: 'Session not found', id });
+  }
+
+  if (session.status !== 'ready') {
+    return res.json({ ready: false, status: session.status, id });
+  }
+
+  const songTitle   = session.songTitle   || 'this song';
+  const progression = session.progression || '';
+  const type        = session.type        || 'chords';
+  const chords      = session.chords      || [];
+  const capo        = session.capo        || 0;
+
+  // Build chord list as readable string
+  const chordList = chords.length > 0 ? chords.join(', ') : 'various chords';
+
+  // Build conversational first message
+  let message = 'SONG RECEIVED: ' + songTitle + '. ';
+  if (progression) message += 'Full progression data: ' + progression + '. ';
+  message += 'Unique chords in this song: ' + chordList + '. ';
+  if (capo > 0) message += 'Capo is on fret ' + capo + '. ';
+  if (capo === 0) message += 'No capo for this song. ';
+  if (type === 'tab' || type === 'mixed') message += 'This song also includes tab and melody sections. ';
+  message += 'You now have this song loaded. Follow your Song Mode initial response rules exactly. Send the CAPO command first as a separate pipe command before any spoken text.';
+
+  console.log('Session prompt built for:', id, 'song:', songTitle);
+
+  res.json({
+    ready: true,
+    sessionId: id,
+    songTitle: songTitle,
+    message: message,
+    mode: 'song'
+  });
+});
+
 app.post('/song-upload', (req, res, next) => {
   if (!multer) {
     return res.status(500).json({ error: 'File upload not available — multer not installed' });
@@ -443,6 +488,7 @@ Always respond with ONLY valid JSON — no markdown, no explanation, no code fen
     session.tabTokens   = parsed.tabTokens   || [];
     session.rawText     = parsed.rawText      || '';
     session.songTitle   = parsed.songTitle    || session.songTitle;
+    session.capo        = parsed.capo         || 0;
     session.status      = 'ready';
 
     console.log('Session', id, 'ready — type:', session.type, 'chords:', session.chords.join(','));
@@ -474,6 +520,7 @@ Return ONLY this JSON structure (no markdown, no explanation):
 {
   "songTitle": "song name if visible or provided",
   "type": "chords",
+  "capo": 0,
   "chords": ["G","Em","C","D"],
   "progression": "[Verse] G Em C D | [Chorus] C G Am F",
   "tabTokens": [],
@@ -482,7 +529,8 @@ Return ONLY this JSON structure (no markdown, no explanation):
 
 RULES:
 - "type" must be "chords" if it is a chord chart/lead sheet, "tab" if it is guitar tablature with string/fret numbers, or "mixed" if both.
-- "chords" must use standard chord names: G, Am, C7, F#m, Bm, D/F#, etc.
+- "capo" must be a number — 0 if no capo, or the fret number if a capo is indicated (e.g. "Capo 2", "Capo III", or a capo symbol on the chart). Look carefully for capo markings.
+- "chords" must use standard chord names: G, Am, C7, F#m, Bm, D/F#, etc. These are the chord shapes the student fingers — already adjusted for capo position if capo is present.
 - "progression" should preserve section labels like [Verse], [Chorus] if visible.
 - "tabTokens" should only be populated for "tab" or "mixed" type. Each entry is a group of string-fret tokens like ["SHe2","SB3"] for simultaneous notes or ["SHe2"] for single notes. Use string codes: He=high E, B, G, D, A, Le=low E.
 - If you cannot read the image clearly, return type:"chords" with empty chords array and explain in rawText.`;
@@ -499,6 +547,7 @@ Return ONLY this JSON structure (no markdown, no explanation):
 {
   "songTitle": "song name if visible or provided",
   "type": "chords",
+  "capo": 0,
   "chords": ["G","Em","C","D"],
   "progression": "[Verse] G Em C D | [Chorus] C G Am F",
   "tabTokens": [],
@@ -509,6 +558,7 @@ RULES:
 - "type" must be "chords" if it is a chord chart, "tab" if it is guitar tablature, or "mixed" if both.
 - "chords" must list every unique chord used, using standard names.
 - "progression" should preserve the full chord sequence with section labels if present.
+- "capo" must be a number — 0 if no capo, or the fret number if a capo is mentioned in the text (e.g. "Capo 2", "Capo III").
 - "tabTokens" only for tab sections — each entry is an array of SF tokens like ["SHe2","SB3"].
 - String codes: He=high E, B, G, D, A, Le=low E.`;
 }
