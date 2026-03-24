@@ -352,7 +352,7 @@ app.get('/session-create', (req, res) => {
 });
 
 app.get('/session-status/:id', (req, res) => {
-  const id = req.params.id.toUpperCase();
+  const id = req.params.id.trim().toUpperCase();
   const session = sessions[id];
   if (!session) {
     return res.status(404).json({ error: 'Session not found', id });
@@ -373,7 +373,7 @@ app.get('/session-status/:id', (req, res) => {
 // Called by App Inventor / StackChan when polling detects status = ready.
 // Returns a fully-built Claude message and mode — no complex JSON parsing needed by client.
 app.get('/session-prompt/:id', (req, res) => {
-  const id = req.params.id.toUpperCase();
+  const id = req.params.id.trim().toUpperCase();
   const session = sessions[id];
 
   if (!session) {
