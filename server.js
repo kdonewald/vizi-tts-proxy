@@ -117,7 +117,7 @@ const VOICE_NAME        = process.env.VOICE_NAME      || 'en-US-Neural2-F';
 const LANGUAGE_CODE     = 'en-US';
 const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
 const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
-const SONG_PROMPT       = process.env.SONG_PROMPT     || '';  // ← Song mode rules
+const SONG_PROMPT       = process.env.SONG_PROMPT     || '';
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -130,7 +130,7 @@ app.get('/health', (req, res) => {
     historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
     activeSessions: Object.keys(sessions).length,
     multerReady: !!multer,
-    songPromptReady: !!SONG_PROMPT   // ← confirms SONG_PROMPT env var is set
+    songPromptReady: !!SONG_PROMPT
   });
 });
 
@@ -250,15 +250,12 @@ app.post('/claude', (req, res) => {
   // ─── Select system prompt based on mode ──────────────────────────────────
   let systemText;
   if (mode === 'song' && SONG_PROMPT) {
-    // Song mode: full song teaching rules appended
     systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
     console.log('Using SONG mode system prompt');
   } else if (mode === 'talk' && REMINDER_PROMPT) {
-    // Talk mode: reminder prompt appended
     systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
     console.log('Using TALK mode system prompt');
   } else {
-    // Default lesson mode: system prompt only
     systemText = SYSTEM_PROMPT;
     console.log('Using LESSON mode system prompt');
   }
@@ -400,7 +397,7 @@ app.get('/session-prompt/:id', (req, res) => {
   if (capo > 0) message += 'Capo is on fret ' + capo + '. ';
   if (capo === 0) message += 'No capo for this song. ';
   if (type === 'tab' || type === 'mixed') message += 'This song also includes tab and melody sections. ';
-  message += 'You now have this song loaded. Follow your Song Mode initial response rules exactly. Send the CAPO command first as a separate pipe command before any spoken text.';
+  message += 'You now have this song loaded. Follow your Song Mode initial response rules exactly. Your spoken introduction must come first, then append the CAPO command as a pipe command at the very end of your response.';
 
   console.log('Session prompt built for:', id, 'song:', songTitle);
 
