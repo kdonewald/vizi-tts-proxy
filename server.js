@@ -111,15 +111,15 @@ app.use((req, res, next) => {
 });
 
 // ─── Environment Variables ───────────────────────────────────────────────────
-const GOOGLE_API_KEY       = process.env.GOOGLE_API_KEY;
-const ANTHROPIC_API_KEY    = process.env.ANTHROPIC_API_KEY;
-const SPOTIFY_CLIENT_ID    = process.env.SPOTIFY_CLIENT_ID;
+const GOOGLE_API_KEY        = process.env.GOOGLE_API_KEY;
+const ANTHROPIC_API_KEY     = process.env.ANTHROPIC_API_KEY;
+const SPOTIFY_CLIENT_ID     = process.env.SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-const VOICE_NAME           = process.env.VOICE_NAME      || 'en-US-Neural2-F';
-const LANGUAGE_CODE        = 'en-US';
-const SYSTEM_PROMPT        = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
-const REMINDER_PROMPT      = process.env.REMINDER_PROMPT || '';
-const SONG_PROMPT          = process.env.SONG_PROMPT     || '';
+const VOICE_NAME            = process.env.VOICE_NAME      || 'en-US-Neural2-F';
+const LANGUAGE_CODE         = 'en-US';
+const SYSTEM_PROMPT         = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
+const REMINDER_PROMPT       = process.env.REMINDER_PROMPT || '';
+const SONG_PROMPT           = process.env.SONG_PROMPT     || '';
 
 // ─── Spotify Token Cache ─────────────────────────────────────────────────────
 let spotifyToken    = null;
@@ -139,6 +139,7 @@ function getSpotifyToken() {
       hostname: 'accounts.spotify.com',
       path: '/api/token',
       method: 'POST',
+      rejectUnauthorized: false,
       headers: {
         'Authorization': 'Basic ' + credentials,
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -288,7 +289,6 @@ app.post('/song-preview', async (req, res) => {
 
   if (!query) return res.status(400).json({ error: 'Missing query' });
 
-  // Retry logic for Spotify 429 rate limiting
   const MAX_RETRIES = 3;
   let attempt = 0;
   let lastError = null;
@@ -303,13 +303,13 @@ app.post('/song-preview', async (req, res) => {
           hostname: 'api.spotify.com',
           path: searchPath,
           method: 'GET',
+          rejectUnauthorized: false,
           headers: { 'Authorization': 'Bearer ' + token }
         };
         const req = https.request(options, (spotRes) => {
           let data = '';
           spotRes.on('data', chunk => { data += chunk; });
           spotRes.on('end', () => {
-            // Handle 429 rate limit
             if (spotRes.statusCode === 429) {
               const retryAfter = parseInt(spotRes.headers['retry-after'] || '2', 10);
               return reject({ status: 429, retryAfter });
@@ -340,7 +340,6 @@ app.post('/song-preview', async (req, res) => {
       return res.json({ previewUrl, trackName, artist });
 
     } catch (err) {
-      // Exponential backoff on 429
       if (err && err.status === 429) {
         const wait = (err.retryAfter || Math.pow(2, attempt)) * 1000;
         console.warn('Spotify 429 rate limit — retrying in', wait, 'ms (attempt', attempt + 1, ')');
@@ -354,7 +353,6 @@ app.post('/song-preview', async (req, res) => {
     }
   }
 
-  // All retries exhausted
   return res.status(503).json({ error: 'Spotify rate limit — try again shortly', detail: lastError });
 });
 
@@ -379,7 +377,6 @@ app.post('/claude', (req, res) => {
 
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
-  // ─── Select system prompt based on mode ──────────────────────────────────
   let systemText;
   if (mode === 'song' && SONG_PROMPT) {
     systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
@@ -519,10 +516,8 @@ app.get('/session-prompt/:id', (req, res) => {
   const chords      = session.chords      || [];
   const capo        = session.capo        || 0;
 
-  // Build chord list as readable string
   const chordList = chords.length > 0 ? chords.join(', ') : 'various chords';
 
-  // Build conversational first message
   let message = 'SONG RECEIVED: ' + songTitle + '. ';
   if (progression) message += 'Full progression data: ' + progression + '. ';
   message += 'Unique chords in this song: ' + chordList + '. ';
