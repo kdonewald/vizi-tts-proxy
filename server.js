@@ -151,7 +151,7 @@ function getSpotifyToken() {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-          if (!parsed.access_token) return reject(new Error('No Spotify token returned'));
+          if (!parsed.access_token) return reject(new Error('No Spotify token returned: ' + JSON.stringify(parsed)));
           spotifyToken    = parsed.access_token;
           spotifyTokenExp = Date.now() + (parsed.expires_in - 300) * 1000; // 5-min safety margin
           console.log('Spotify token refreshed — expires in', parsed.expires_in, 'sec');
