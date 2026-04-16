@@ -111,13 +111,61 @@ app.use((req, res, next) => {
 });
 
 // ─── Environment Variables ───────────────────────────────────────────────────
-const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const VOICE_NAME        = process.env.VOICE_NAME      || 'en-US-Neural2-F';
-const LANGUAGE_CODE     = 'en-US';
-const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
-const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
-const SONG_PROMPT       = process.env.SONG_PROMPT     || '';
+const GOOGLE_API_KEY       = process.env.GOOGLE_API_KEY;
+const ANTHROPIC_API_KEY    = process.env.ANTHROPIC_API_KEY;
+const SPOTIFY_CLIENT_ID    = process.env.SPOTIFY_CLIENT_ID;
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+const VOICE_NAME           = process.env.VOICE_NAME      || 'en-US-Neural2-F';
+const LANGUAGE_CODE        = 'en-US';
+const SYSTEM_PROMPT        = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
+const REMINDER_PROMPT      = process.env.REMINDER_PROMPT || '';
+const SONG_PROMPT          = process.env.SONG_PROMPT     || '';
+
+// ─── Spotify Token Cache ─────────────────────────────────────────────────────
+let spotifyToken    = null;
+let spotifyTokenExp = 0;
+
+function getSpotifyToken() {
+  return new Promise((resolve, reject) => {
+    if (spotifyToken && Date.now() < spotifyTokenExp) {
+      return resolve(spotifyToken);
+    }
+    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+      return reject(new Error('SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET not set'));
+    }
+    const credentials = Buffer.from(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET).toString('base64');
+    const body        = 'grant_type=client_credentials';
+    const options = {
+      hostname: 'accounts.spotify.com',
+      path: '/api/token',
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + credentials,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (!parsed.access_token) return reject(new Error('No Spotify token returned'));
+          spotifyToken    = parsed.access_token;
+          spotifyTokenExp = Date.now() + (parsed.expires_in - 300) * 1000; // 5-min safety margin
+          console.log('Spotify token refreshed — expires in', parsed.expires_in, 'sec');
+          resolve(spotifyToken);
+        } catch (err) {
+          reject(new Error('Spotify token parse error: ' + err.message));
+        }
+      });
+    });
+    req.on('error', err => reject(err));
+    req.write(body);
+    req.end();
+  });
+}
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -126,6 +174,7 @@ app.get('/health', (req, res) => {
     voice: VOICE_NAME,
     model: 'claude-haiku-4-5-20251001',
     claudeReady: !!ANTHROPIC_API_KEY,
+    spotifyReady: !!(SPOTIFY_CLIENT_ID && SPOTIFY_CLIENT_SECRET),
     historyLength: conversationHistory.length,
     historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
     activeSessions: Object.keys(sessions).length,
@@ -224,6 +273,89 @@ app.post('/tts', (req, res) => {
   console.log('POST /tts text length:', text && text.length);
   if (!text) return res.status(400).json({ error: 'Missing text parameter' });
   synthesize(text, res);
+});
+
+// ─── Spotify Preview ─────────────────────────────────────────────────────────
+// POST /song-preview
+// Request:  { "query": "Wonderwall Oasis" }
+// Response: { "previewUrl": "https://..." | null, "trackName": "...", "artist": "..." }
+// CoreS3: on PREVIEW command, play previewUrl via I2S and show Spotify logo on screen.
+// previewUrl is null for ~30% of tracks — handle gracefully with spoken fallback.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/song-preview', async (req, res) => {
+  const query = req.body && req.body.query;
+  console.log('POST /song-preview query:', query);
+
+  if (!query) return res.status(400).json({ error: 'Missing query' });
+
+  // Retry logic for Spotify 429 rate limiting
+  const MAX_RETRIES = 3;
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt < MAX_RETRIES) {
+    try {
+      const token = await getSpotifyToken();
+
+      const searchPath = '/v1/search?q=' + encodeURIComponent(query) + '&type=track&limit=1';
+      const searchResult = await new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'api.spotify.com',
+          path: searchPath,
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + token }
+        };
+        const req = https.request(options, (spotRes) => {
+          let data = '';
+          spotRes.on('data', chunk => { data += chunk; });
+          spotRes.on('end', () => {
+            // Handle 429 rate limit
+            if (spotRes.statusCode === 429) {
+              const retryAfter = parseInt(spotRes.headers['retry-after'] || '2', 10);
+              return reject({ status: 429, retryAfter });
+            }
+            try {
+              resolve({ status: spotRes.statusCode, data: JSON.parse(data) });
+            } catch (err) {
+              reject(new Error('Spotify search parse error: ' + err.message));
+            }
+          });
+        });
+        req.on('error', err => reject(err));
+        req.end();
+      });
+
+      const track = searchResult.data.tracks && searchResult.data.tracks.items[0];
+      if (!track) {
+        console.log('Spotify: no track found for query:', query);
+        return res.status(404).json({ error: 'no_track_found', query });
+      }
+
+      const previewUrl = track.preview_url || null;
+      const trackName  = track.name;
+      const artist     = track.artists[0].name;
+
+      console.log('Spotify preview — track:', trackName, 'artist:', artist, 'hasPreview:', !!previewUrl);
+
+      return res.json({ previewUrl, trackName, artist });
+
+    } catch (err) {
+      // Exponential backoff on 429
+      if (err && err.status === 429) {
+        const wait = (err.retryAfter || Math.pow(2, attempt)) * 1000;
+        console.warn('Spotify 429 rate limit — retrying in', wait, 'ms (attempt', attempt + 1, ')');
+        await new Promise(r => setTimeout(r, wait));
+        attempt++;
+        lastError = 'Spotify rate limited';
+      } else {
+        console.error('Spotify preview error:', err.message || err);
+        return res.status(500).json({ error: 'Spotify request failed', detail: err.message || String(err) });
+      }
+    }
+  }
+
+  // All retries exhausted
+  return res.status(503).json({ error: 'Spotify rate limit — try again shortly', detail: lastError });
 });
 
 // ─── Claude API proxy ────────────────────────────────────────────────────────
@@ -620,6 +752,7 @@ app.listen(PORT, () => {
   console.log('Vizi TTS Proxy listening on port ' + PORT);
   console.log('Voice:', VOICE_NAME);
   console.log('Claude ready:', !!ANTHROPIC_API_KEY);
+  console.log('Spotify ready:', !!(SPOTIFY_CLIENT_ID && SPOTIFY_CLIENT_SECRET));
   console.log('Multer ready:', !!multer);
   console.log('Song prompt ready:', !!SONG_PROMPT);
 });
