@@ -309,7 +309,8 @@ app.post('/song-preview', async (req, res) => {
         const req = https.request(options, (spotRes) => {
           let data = '';
           spotRes.on('data', chunk => { data += chunk; });
-          spotRes.on('end', () => {
+         spotRes.on('end', () => {
+           console.log('Spotify search raw response:', data.slice(0, 300));
             if (spotRes.statusCode === 429) {
               const retryAfter = parseInt(spotRes.headers['retry-after'] || '2', 10);
               return reject({ status: 429, retryAfter });
