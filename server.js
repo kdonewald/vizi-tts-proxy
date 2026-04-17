@@ -113,6 +113,7 @@ app.use((req, res, next) => {
 // ─── Environment Variables ───────────────────────────────────────────────────
 const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const YOUTUBE_API_KEY   = process.env.YOUTUBE_API_KEY;
 const VOICE_NAME        = process.env.VOICE_NAME      || 'en-US-Neural2-F';
 const LANGUAGE_CODE     = 'en-US';
 const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
@@ -126,6 +127,7 @@ app.get('/health', (req, res) => {
     voice: VOICE_NAME,
     model: 'claude-haiku-4-5-20251001',
     claudeReady: !!ANTHROPIC_API_KEY,
+    youtubeReady: !!YOUTUBE_API_KEY,
     historyLength: conversationHistory.length,
     historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
     activeSessions: Object.keys(sessions).length,
@@ -226,24 +228,72 @@ app.post('/tts', (req, res) => {
   synthesize(text, res);
 });
 
-// ─── Song Preview (YouTube QR) ───────────────────────────────────────────────
+// ─── Song Preview (YouTube direct video link) ────────────────────────────────
 // POST /song-preview
 // Request:  { "query": "Wonderwall Oasis" }
-// Response: { "youtubeUrl": "https://www.youtube.com/results?search_query=..." , "query": "..." }
-// CoreS3: on QR command, render youtubeUrl as QR code on ILI9342C display.
-// Student scans QR with phone to hear the song on YouTube.
-// Vizi says: "Scan the code on my screen to hear it, then we'll learn it!"
+// Response: { "videoUrl": "https://www.youtube.com/watch?v=...", "title": "...", "query": "..." }
+// CoreS3: shows a ▶ Play button on screen linked to videoUrl.
+// Student taps button on 2-inch touchscreen → video opens directly.
+// Falls back to YouTube search URL if API key not set or no results found.
 // ─────────────────────────────────────────────────────────────────────────────
-app.post('/song-preview', (req, res) => {
+app.post('/song-preview', async (req, res) => {
   const query = req.body && req.body.query;
-  console.log('POST /song-preview (YouTube QR) query:', query);
+  console.log('POST /song-preview query:', query);
 
   if (!query) return res.status(400).json({ error: 'Missing query' });
 
-  const youtubeUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
+  // Fallback URL in case YouTube API is unavailable
+  const fallbackUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
 
-  console.log('YouTube URL built:', youtubeUrl);
-  res.json({ youtubeUrl, query });
+  if (!YOUTUBE_API_KEY) {
+    console.warn('YOUTUBE_API_KEY not set — returning search fallback');
+    return res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
+  }
+
+  try {
+    const searchPath = '/youtube/v3/search?part=snippet&type=video&maxResults=1'
+      + '&q=' + encodeURIComponent(query)
+      + '&key=' + encodeURIComponent(YOUTUBE_API_KEY);
+
+    const result = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'www.googleapis.com',
+        path: searchPath,
+        method: 'GET'
+      };
+      const req = https.request(options, (ytRes) => {
+        let data = '';
+        ytRes.on('data', chunk => { data += chunk; });
+        ytRes.on('end', () => {
+          try {
+            resolve({ status: ytRes.statusCode, data: JSON.parse(data) });
+          } catch (err) {
+            reject(new Error('YouTube parse error: ' + err.message));
+          }
+        });
+      });
+      req.on('error', err => reject(err));
+      req.end();
+    });
+
+    const items = result.data.items;
+    if (!items || items.length === 0) {
+      console.log('YouTube: no results for query:', query);
+      return res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
+    }
+
+    const videoId = items[0].id.videoId;
+    const title   = items[0].snippet.title;
+    const videoUrl = 'https://www.youtube.com/watch?v=' + videoId;
+
+    console.log('YouTube preview — title:', title, 'videoId:', videoId);
+    res.json({ videoUrl, title, query, fallback: false });
+
+  } catch (err) {
+    console.error('YouTube preview error:', err.message);
+    // Graceful fallback — don't fail hard, return search URL
+    res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
+  }
 });
 
 // ─── Claude API proxy ────────────────────────────────────────────────────────
@@ -343,7 +393,7 @@ app.post('/claude', (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// ─── SONG SESSION ENDPOINTS ──────────────────────────────────────────────────
+// ─── SONG SESSION ENDPOINTS ──────────────────────────────────────════════════
 // ════════════════════════════════════════════════════════════════════════════
 
 app.post('/session-create', (req, res) => {
@@ -638,6 +688,7 @@ app.listen(PORT, () => {
   console.log('Vizi TTS Proxy listening on port ' + PORT);
   console.log('Voice:', VOICE_NAME);
   console.log('Claude ready:', !!ANTHROPIC_API_KEY);
+  console.log('YouTube ready:', !!YOUTUBE_API_KEY);
   console.log('Multer ready:', !!multer);
   console.log('Song prompt ready:', !!SONG_PROMPT);
 });
