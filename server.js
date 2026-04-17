@@ -265,6 +265,7 @@ app.post('/song-preview', async (req, res) => {
         let data = '';
         ytRes.on('data', chunk => { data += chunk; });
         ytRes.on('end', () => {
+          console.log('YouTube raw response:', data.slice(0, 500));
           try {
             resolve({ status: ytRes.statusCode, data: JSON.parse(data) });
           } catch (err) {
