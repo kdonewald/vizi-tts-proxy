@@ -120,6 +120,17 @@ const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI gu
 const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
 const SONG_PROMPT       = process.env.SONG_PROMPT     || '';
 
+// ─── Pipe command parser ─────────────────────────────────────────────────────
+// Extracts spoken text and pipe commands from Claude's pipe-delimited response.
+// Returns { spoken, commands } where commands is a pipe-joined string of
+// everything after the first pipe e.g. "CHORD G | CAPO 2"
+function parsePipeResponse(fullText) {
+  const parts = fullText.split('|').map(p => p.trim());
+  const spoken   = parts[0] || '';
+  const commands = parts.slice(1).join('|');
+  return { spoken, commands };
+}
+
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
@@ -232,7 +243,9 @@ app.post('/tts', (req, res) => {
 // POST /claude-tts
 // Request:  { "message": "user text", "mode": "general" }
 // Response: raw MP3 audio bytes (Content-Type: audio/mpeg)
-//           Header X-Vizi-Text contains URL-encoded spoken text for display
+// Headers:
+//   X-Vizi-Text     — URL-encoded spoken text (before first pipe)
+//   X-Vizi-Commands — URL-encoded pipe commands (after first pipe) e.g. "CHORD G|CAPO 2"
 // Chains Claude → extract spoken text → Google TTS in one round trip
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/claude-tts', (req, res) => {
@@ -308,25 +321,20 @@ app.post('/claude-tts', (req, res) => {
 
         const fullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
         addToHistory('assistant', fullText);
-        console.log('claude-tts Claude response:', fullText.slice(0, 80));
+        console.log('claude-tts full response:', fullText.slice(0, 120));
         console.log('History now', conversationHistory.length, 'messages');
 
-        // Extract spoken text — strip pipe commands
-        let spoken = fullText;
-        const pipeIndex = fullText.indexOf('|');
-        if (pipeIndex > 0) {
-          spoken = fullText.substring(0, pipeIndex).trim();
-        } else {
-          spoken = fullText.trim();
-        }
+        // Parse pipe-delimited response
+        const { spoken, commands } = parsePipeResponse(fullText);
 
         if (!spoken) {
           return res.status(500).json({ error: 'Empty spoken text from Claude' });
         }
 
         console.log('claude-tts spoken:', spoken.slice(0, 80));
+        if (commands) console.log('claude-tts commands:', commands.slice(0, 80));
 
-        // Call Google TTS with spoken text
+        // Call Google TTS with spoken text only
         const ttsBody = JSON.stringify({
           input: { text: spoken },
           voice: { languageCode: LANGUAGE_CODE, name: VOICE_NAME },
@@ -357,12 +365,13 @@ app.post('/claude-tts', (req, res) => {
 
               const audioBuffer = Buffer.from(ttsParsed.audioContent, 'base64');
 
-              // Send spoken text in header so firmware can display it
+              // Return MP3 with spoken text and pipe commands in headers
               res.set({
                 'Content-Type': 'audio/mpeg',
                 'Content-Length': audioBuffer.length,
-                'X-Vizi-Text': encodeURIComponent(spoken.substring(0, 200)),
-                'Cache-Control': 'no-cache'
+                'X-Vizi-Text':     encodeURIComponent(spoken.substring(0, 500)),
+                'X-Vizi-Commands': encodeURIComponent(commands.substring(0, 500)),
+                'Cache-Control':   'no-cache'
               });
               res.send(audioBuffer);
 
