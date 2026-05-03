@@ -17,7 +17,7 @@ let multer;
 try { multer = require('multer'); } catch(e) { multer = null; }
 const upload = multer ? multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }) : null;
 
-// ─── Keep-Alive agent for Google TTS ────────────────────────────────────────
+// ─── Keep-Alive agent for Google APIs ───────────────────────────────────────
 const googleAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 4,
@@ -228,13 +228,96 @@ app.post('/tts', (req, res) => {
   synthesize(text, res);
 });
 
+// ─── Google STT ──────────────────────────────────────────────────────────────
+// POST /stt
+// Request:  { "audio": "<base64 encoded LINEAR16 PCM>", "sampleRate": 17000 }
+// Response: { "transcript": "what the user said", "confidence": 0.95 }
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/stt', (req, res) => {
+  console.log('POST /stt received');
+
+  if (!GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
+  }
+
+  const audioContent = req.body && req.body.audio;
+  const sampleRate   = (req.body && req.body.sampleRate) || 17000;
+
+  if (!audioContent) {
+    return res.status(400).json({ error: 'Missing audio content' });
+  }
+
+  console.log('STT audio content length:', audioContent.length, 'sampleRate:', sampleRate);
+
+  const sttBody = JSON.stringify({
+    config: {
+      encoding: 'LINEAR16',
+      sampleRateHertz: sampleRate,
+      languageCode: 'en-US',
+      model: 'default'
+    },
+    audio: {
+      content: audioContent
+    }
+  });
+
+  const options = {
+    hostname: 'speech.googleapis.com',
+    path: '/v1/speech:recognize?key=' + encodeURIComponent(GOOGLE_API_KEY),
+    method: 'POST',
+    agent: googleAgent,
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(sttBody)
+    }
+  };
+
+  const googleReq = https.request(options, (googleRes) => {
+    let data = '';
+    googleRes.on('data', chunk => { data += chunk; });
+    googleRes.on('end', () => {
+      try {
+        const parsed = JSON.parse(data);
+        console.log('STT response:', JSON.stringify(parsed).slice(0, 200));
+
+        if (googleRes.statusCode !== 200) {
+          console.error('STT error:', JSON.stringify(parsed));
+          return res.status(googleRes.statusCode).json({
+            error: 'Google STT error',
+            detail: parsed
+          });
+        }
+
+        if (!parsed.results || parsed.results.length === 0) {
+          console.log('STT: no results — silence or unclear audio');
+          return res.json({ transcript: '', confidence: 0 });
+        }
+
+        const transcript = parsed.results[0].alternatives[0].transcript || '';
+        const confidence = parsed.results[0].alternatives[0].confidence || 0;
+
+        console.log('STT transcript:', transcript, 'confidence:', confidence);
+        res.json({ transcript, confidence });
+
+      } catch (err) {
+        res.status(500).json({ error: 'STT parse error', detail: err.message });
+      }
+    });
+  });
+
+  googleReq.on('error', err => {
+    console.error('STT request error:', err.message);
+    res.status(500).json({ error: 'STT request failed', detail: err.message });
+  });
+
+  googleReq.write(sttBody);
+  googleReq.end();
+});
+
 // ─── Song Preview (YouTube direct video link) ────────────────────────────────
 // POST /song-preview
 // Request:  { "query": "Wonderwall Oasis" }
 // Response: { "videoUrl": "https://www.youtube.com/watch?v=...", "title": "...", "query": "..." }
-// CoreS3: shows a ▶ Play button on screen linked to videoUrl.
-// Student taps button on 2-inch touchscreen → video opens directly.
-// Falls back to YouTube search URL if API key not set or no results found.
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/song-preview', async (req, res) => {
   const query = req.body && req.body.query;
@@ -242,7 +325,6 @@ app.post('/song-preview', async (req, res) => {
 
   if (!query) return res.status(400).json({ error: 'Missing query' });
 
-  // Fallback URL in case YouTube API is unavailable
   const fallbackUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
 
   if (!YOUTUBE_API_KEY) {
@@ -283,8 +365,8 @@ app.post('/song-preview', async (req, res) => {
       return res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
     }
 
-    const videoId = items[0].id.videoId;
-    const title   = items[0].snippet.title;
+    const videoId  = items[0].id.videoId;
+    const title    = items[0].snippet.title;
     const videoUrl = 'https://www.youtube.com/watch?v=' + videoId;
 
     console.log('YouTube preview — title:', title, 'videoId:', videoId);
@@ -292,7 +374,6 @@ app.post('/song-preview', async (req, res) => {
 
   } catch (err) {
     console.error('YouTube preview error:', err.message);
-    // Graceful fallback — don't fail hard, return search URL
     res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
   }
 });
@@ -318,7 +399,6 @@ app.post('/claude', (req, res) => {
 
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
-  // ─── Select system prompt based on mode ──────────────────────────────────
   let systemText;
   if (mode === 'song' && SONG_PROMPT) {
     systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
@@ -438,8 +518,6 @@ app.get('/session-status/:id', (req, res) => {
 });
 
 // GET /session-prompt/:id
-// Called by App Inventor / StackChan when polling detects status = ready.
-// Returns a fully-built Claude message and mode — no complex JSON parsing needed by client.
 app.get('/session-prompt/:id', (req, res) => {
   const id = req.params.id.trim().toUpperCase();
   const session = sessions[id];
