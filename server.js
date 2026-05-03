@@ -228,6 +228,174 @@ app.post('/tts', (req, res) => {
   synthesize(text, res);
 });
 
+// ─── Claude + TTS combined endpoint ──────────────────────────────────────────
+// POST /claude-tts
+// Request:  { "message": "user text", "mode": "general" }
+// Response: raw MP3 audio bytes (Content-Type: audio/mpeg)
+//           Header X-Vizi-Text contains URL-encoded spoken text for display
+// Chains Claude → extract spoken text → Google TTS in one round trip
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/claude-tts', (req, res) => {
+  let message = req.body && req.body.message;
+  const mode  = req.body && req.body.mode;
+
+  console.log('POST /claude-tts mode:', mode, 'message:', message && message.slice(0, 80));
+
+  if (!message) {
+    return res.status(400).json({ error: 'Missing message' });
+  }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  }
+  if (!GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
+  }
+
+  message = message.replace(/[\r\n]+/g, ' ').trim();
+
+  // Select system prompt based on mode
+  let systemText;
+  if (mode === 'song' && SONG_PROMPT) {
+    systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
+    console.log('Using SONG mode system prompt');
+  } else if (mode === 'talk' && REMINDER_PROMPT) {
+    systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
+    console.log('Using TALK mode system prompt');
+  } else {
+    systemText = SYSTEM_PROMPT;
+    console.log('Using LESSON mode system prompt');
+  }
+
+  getHistory();
+  addToHistory('user', message);
+  const messages = [...conversationHistory];
+
+  console.log('Sending', messages.length, 'messages to Claude (history depth:', messages.length - 1, ')');
+
+  const claudeBody = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1000,
+    system: systemText,
+    messages: messages
+  });
+
+  const claudeOptions = {
+    hostname: 'api.anthropic.com',
+    path: '/v1/messages',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Length': Buffer.byteLength(claudeBody)
+    }
+  };
+
+  const claudeReq = https.request(claudeOptions, (claudeRes) => {
+    let data = '';
+    claudeRes.on('data', chunk => { data += chunk; });
+    claudeRes.on('end', () => {
+      try {
+        const parsed = JSON.parse(data);
+        if (claudeRes.statusCode !== 200) {
+          console.error('Claude error:', data);
+          conversationHistory.pop();
+          return res.status(claudeRes.statusCode).json({
+            error: 'Claude API error',
+            detail: parsed
+          });
+        }
+
+        const fullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
+        addToHistory('assistant', fullText);
+        console.log('claude-tts Claude response:', fullText.slice(0, 80));
+        console.log('History now', conversationHistory.length, 'messages');
+
+        // Extract spoken text — strip pipe commands
+        let spoken = fullText;
+        const pipeIndex = fullText.indexOf('|');
+        if (pipeIndex > 0) {
+          spoken = fullText.substring(0, pipeIndex).trim();
+        } else {
+          spoken = fullText.trim();
+        }
+
+        if (!spoken) {
+          return res.status(500).json({ error: 'Empty spoken text from Claude' });
+        }
+
+        console.log('claude-tts spoken:', spoken.slice(0, 80));
+
+        // Call Google TTS with spoken text
+        const ttsBody = JSON.stringify({
+          input: { text: spoken },
+          voice: { languageCode: LANGUAGE_CODE, name: VOICE_NAME },
+          audioConfig: { audioEncoding: 'MP3' }
+        });
+
+        const ttsOptions = {
+          hostname: 'texttospeech.googleapis.com',
+          path: '/v1/text:synthesize?key=' + encodeURIComponent(GOOGLE_API_KEY),
+          method: 'POST',
+          agent: googleAgent,
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(ttsBody)
+          }
+        };
+
+        const ttsReq = https.request(ttsOptions, (ttsRes) => {
+          let ttsData = '';
+          ttsRes.on('data', chunk => { ttsData += chunk; });
+          ttsRes.on('end', () => {
+            try {
+              const ttsParsed = JSON.parse(ttsData);
+              if (!ttsParsed.audioContent) {
+                console.error('TTS error in claude-tts:', JSON.stringify(ttsParsed));
+                return res.status(500).json({ error: 'No audio returned from TTS' });
+              }
+
+              const audioBuffer = Buffer.from(ttsParsed.audioContent, 'base64');
+
+              // Send spoken text in header so firmware can display it
+              res.set({
+                'Content-Type': 'audio/mpeg',
+                'Content-Length': audioBuffer.length,
+                'X-Vizi-Text': encodeURIComponent(spoken.substring(0, 200)),
+                'Cache-Control': 'no-cache'
+              });
+              res.send(audioBuffer);
+
+            } catch (err) {
+              res.status(500).json({ error: 'TTS parse error', detail: err.message });
+            }
+          });
+        });
+
+        ttsReq.on('error', err => {
+          res.status(500).json({ error: 'TTS request failed', detail: err.message });
+        });
+
+        ttsReq.write(ttsBody);
+        ttsReq.end();
+
+      } catch (err) {
+        conversationHistory.pop();
+        res.status(500).json({ error: 'Parse error', detail: err.message });
+      }
+    });
+  });
+
+  claudeReq.on('error', err => {
+    console.error('Claude request error:', err.message);
+    conversationHistory.pop();
+    res.status(500).json({ error: 'Claude request failed', detail: err.message });
+  });
+
+  claudeReq.write(claudeBody);
+  claudeReq.end();
+});
+
 // ─── Google STT ──────────────────────────────────────────────────────────────
 // POST /stt
 // Request:  { "audio": "<base64 encoded LINEAR16 PCM>", "sampleRate": 17000 }
