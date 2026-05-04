@@ -3,7 +3,7 @@ const https   = require('https');
 const crypto  = require('crypto');
 const app     = express();
 
-// ─── CORS — allow aivisualguitar.com to call this server ────────────────────
+// ─── CORS ────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -12,12 +12,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── multer for multipart file uploads (song upload endpoint) ───────────────
+// ─── multer ──────────────────────────────────────────────────────────────────
 let multer;
 try { multer = require('multer'); } catch(e) { multer = null; }
 const upload = multer ? multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }) : null;
 
-// ─── Keep-Alive agent for Google APIs ───────────────────────────────────────
+// ─── Keep-Alive agent for Google APIs ────────────────────────────────────────
 const googleAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 4,
@@ -25,8 +25,8 @@ const googleAgent = new https.Agent({
 });
 
 // ─── Conversation History ────────────────────────────────────────────────────
-const MAX_HISTORY     = 6;
-const HISTORY_TTL_MS  = 10 * 60 * 1000;
+const MAX_HISTORY    = 6;
+const HISTORY_TTL_MS = 10 * 60 * 1000;
 
 let conversationHistory = [];
 let lastActivityTime    = Date.now();
@@ -47,16 +47,14 @@ function getHistory() {
   return conversationHistory;
 }
 
-// ─── Song Sessions (in-memory) ───────────────────────────────────────────────
+// ─── Song Sessions ────────────────────────────────────────────────────────────
 const sessions = {};
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
 function cleanOldSessions() {
   const now = Date.now();
   for (const id in sessions) {
-    if (now - sessions[id].createdAt > SESSION_TTL_MS) {
-      delete sessions[id];
-    }
+    if (now - sessions[id].createdAt > SESSION_TTL_MS) delete sessions[id];
   }
 }
 
@@ -64,110 +62,78 @@ function createSession(songTitle = '') {
   cleanOldSessions();
   const id = crypto.randomBytes(3).toString('hex').toUpperCase();
   sessions[id] = {
-    status: 'waiting',
-    createdAt: Date.now(),
-    songTitle,
-    type: null,
-    chords: [],
-    progression: '',
-    tabTokens: [],
-    rawText: '',
-    capo: 0,
-    error: null
+    status: 'waiting', createdAt: Date.now(), songTitle,
+    type: null, chords: [], progression: '', tabTokens: [],
+    rawText: '', capo: 0, error: null
   };
   return id;
 }
 
-// ─── Raw body parser (handles App Inventor PostText quirks) ─────────────────
+// ─── Raw body parser ─────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
     return next();
   }
-
   let data = '';
   req.on('data', chunk => { data += chunk; });
   req.on('end', () => {
     req.rawBody = data;
     console.log('RAW BODY:', JSON.stringify(data.slice(0, 300)));
-
     let cleaned = data.trim();
-
-    if (cleaned.startsWith('text: ')) {
-      cleaned = cleaned.slice(6);
-    } else if (cleaned.startsWith('text=')) {
-      cleaned = decodeURIComponent(cleaned.slice(5).replace(/\+/g, ' '));
-    }
-
+    if (cleaned.startsWith('text: '))       cleaned = cleaned.slice(6);
+    else if (cleaned.startsWith('text='))   cleaned = decodeURIComponent(cleaned.slice(5).replace(/\+/g, ' '));
     cleaned = cleaned.replace(/[\r\n]+/g, ' ');
-
-    try {
-      req.body = JSON.parse(cleaned);
-      return next();
-    } catch(e) { /* fall through */ }
-
+    try { req.body = JSON.parse(cleaned); return next(); } catch(e) {}
     req.body = { text: cleaned };
     next();
   });
 });
 
-// ─── Environment Variables ───────────────────────────────────────────────────
+// ─── Environment Variables ────────────────────────────────────────────────────
 const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const YOUTUBE_API_KEY   = process.env.YOUTUBE_API_KEY;
-const VOICE_NAME        = process.env.VOICE_NAME      || 'en-US-Neural2-F';
+const VOICE_NAME        = process.env.VOICE_NAME    || 'en-US-Neural2-F';
 const LANGUAGE_CODE     = 'en-US';
-const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT   || 'You are Vizi, an AI guitar tutor.';
+const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT || 'You are Vizi, an AI guitar tutor.';
 const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
-const SONG_PROMPT       = process.env.SONG_PROMPT     || '';
+const SONG_PROMPT       = process.env.SONG_PROMPT   || '';
 
-// ─── Pipe command parser ─────────────────────────────────────────────────────
-// Extracts spoken text and pipe commands from Claude's pipe-delimited response.
-// Returns { spoken, commands } where commands is a pipe-joined string of
-// everything after the first pipe e.g. "CHORD G | CAPO 2"
+// ─── Pipe response parser ─────────────────────────────────────────────────────
 function parsePipeResponse(fullText) {
   const parts = fullText.split('|').map(p => p.trim());
-  const spoken   = parts[0] || '';
-  const commands = parts.slice(1).join('|');
-  return { spoken, commands };
+  return { spoken: parts[0] || '', commands: parts.slice(1).join('|') };
 }
 
-// ─── Health check ────────────────────────────────────────────────────────────
+// ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
-    status: 'Vizi TTS Proxy running',
-    voice: VOICE_NAME,
+    status: 'Vizi TTS Proxy running', voice: VOICE_NAME,
     model: 'claude-haiku-4-5-20251001',
-    claudeReady: !!ANTHROPIC_API_KEY,
-    youtubeReady: !!YOUTUBE_API_KEY,
+    claudeReady: !!ANTHROPIC_API_KEY, youtubeReady: !!YOUTUBE_API_KEY,
     historyLength: conversationHistory.length,
     historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
     activeSessions: Object.keys(sessions).length,
-    multerReady: !!multer,
-    songPromptReady: !!SONG_PROMPT
+    multerReady: !!multer, songPromptReady: !!SONG_PROMPT
   });
 });
 
-// ─── Reset ───────────────────────────────────────────────────────────────────
+// ─── Reset ────────────────────────────────────────────────────────────────────
 app.post('/reset', (req, res) => {
-  conversationHistory = [];
-  lastActivityTime = Date.now();
+  conversationHistory = []; lastActivityTime = Date.now();
   console.log('Conversation history reset via POST');
   res.json({ status: 'ok', message: 'Conversation history cleared' });
 });
-
 app.get('/reset', (req, res) => {
-  conversationHistory = [];
-  lastActivityTime = Date.now();
+  conversationHistory = []; lastActivityTime = Date.now();
   console.log('Conversation history reset via GET');
   res.json({ status: 'ok', message: 'Conversation history cleared' });
 });
 
-// ─── Google TTS ──────────────────────────────────────────────────────────────
+// ─── Google TTS helper ────────────────────────────────────────────────────────
 function synthesize(text, res) {
   console.log('Synthesizing:', text.slice(0, 80));
-  if (!GOOGLE_API_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
-  }
+  if (!GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
 
   const requestBody = JSON.stringify({
     input: { text },
@@ -178,12 +144,8 @@ function synthesize(text, res) {
   const options = {
     hostname: 'texttospeech.googleapis.com',
     path: '/v1/text:synthesize?key=' + encodeURIComponent(GOOGLE_API_KEY),
-    method: 'POST',
-    agent: googleAgent,
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(requestBody)
-    }
+    method: 'POST', agent: googleAgent,
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(requestBody) }
   };
 
   const googleReq = https.request(options, (googleRes) => {
@@ -197,33 +159,54 @@ function synthesize(text, res) {
           return res.status(500).json({ error: 'No audio returned', detail: parsed });
         }
         const audioBuffer = Buffer.from(parsed.audioContent, 'base64');
-        res.set({
-          'Content-Type': 'audio/mpeg',
-          'Content-Length': audioBuffer.length,
-          'Cache-Control': 'no-cache'
-        });
+        res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': audioBuffer.length, 'Cache-Control': 'no-cache' });
         res.send(audioBuffer);
-      } catch (err) {
-        res.status(500).json({ error: 'Parse error', detail: err.message });
-      }
+      } catch (err) { res.status(500).json({ error: 'Parse error', detail: err.message }); }
     });
   });
-
-  googleReq.on('error', err => {
-    res.status(500).json({ error: 'Google TTS request failed', detail: err.message });
-  });
-
+  googleReq.on('error', err => res.status(500).json({ error: 'Google TTS request failed', detail: err.message }));
   googleReq.write(requestBody);
   googleReq.end();
 }
 
+// ─── Promise-based TTS (for chained endpoints) ────────────────────────────────
+function synthesizeToBuffer(text) {
+  return new Promise((resolve, reject) => {
+    if (!GOOGLE_API_KEY) return reject(new Error('GOOGLE_API_KEY not set'));
+
+    const requestBody = JSON.stringify({
+      input: { text },
+      voice: { languageCode: LANGUAGE_CODE, name: VOICE_NAME },
+      audioConfig: { audioEncoding: 'MP3' }
+    });
+
+    const options = {
+      hostname: 'texttospeech.googleapis.com',
+      path: '/v1/text:synthesize?key=' + encodeURIComponent(GOOGLE_API_KEY),
+      method: 'POST', agent: googleAgent,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(requestBody) }
+    };
+
+    const googleReq = https.request(options, (googleRes) => {
+      let data = '';
+      googleRes.on('data', chunk => { data += chunk; });
+      googleRes.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (!parsed.audioContent) return reject(new Error('No audio returned from TTS'));
+          resolve(Buffer.from(parsed.audioContent, 'base64'));
+        } catch (err) { reject(err); }
+      });
+    });
+    googleReq.on('error', err => reject(err));
+    googleReq.write(requestBody);
+    googleReq.end();
+  });
+}
+
 app.get('/tts', (req, res) => {
   const text = req.query.text;
-  console.log('GET /tts text length:', text && text.length);
   if (!text) return res.status(400).json({ error: 'Missing text parameter' });
-  if (text.length > 500) {
-    console.warn('WARNING: GET /tts text is very long (' + text.length + ' chars)');
-  }
   synthesize(text, res);
 });
 
@@ -231,222 +214,242 @@ app.post('/tts', (req, res) => {
   let text;
   if (typeof req.body === 'string') {
     try { text = JSON.parse(req.body).text; } catch(e) { text = req.body; }
-  } else {
-    text = req.body && req.body.text;
-  }
-  console.log('POST /tts text length:', text && text.length);
+  } else { text = req.body && req.body.text; }
   if (!text) return res.status(400).json({ error: 'Missing text parameter' });
   synthesize(text, res);
 });
 
-// ─── Claude + TTS combined endpoint ──────────────────────────────────────────
+// ─── Claude + TTS combined ────────────────────────────────────────────────────
 // POST /claude-tts
-// Request:  { "message": "user text", "mode": "general" }
-// Response: raw MP3 audio bytes (Content-Type: audio/mpeg)
-// Headers:
-//   X-Vizi-Text     — URL-encoded spoken text (before first pipe)
-//   X-Vizi-Commands — URL-encoded pipe commands (after first pipe) e.g. "CHORD G|CAPO 2"
-// Chains Claude → extract spoken text → Google TTS in one round trip
+// Request:  { "message": "...", "mode": "general" }
+// Response: MP3 bytes + X-Vizi-Text + X-Vizi-Commands headers
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/claude-tts', (req, res) => {
   let message = req.body && req.body.message;
   const mode  = req.body && req.body.mode;
 
   console.log('POST /claude-tts mode:', mode, 'message:', message && message.slice(0, 80));
-
-  if (!message) {
-    return res.status(400).json({ error: 'Missing message' });
-  }
-  if (!ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
-  }
-  if (!GOOGLE_API_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
-  }
+  if (!message) return res.status(400).json({ error: 'Missing message' });
+  if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  if (!GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
 
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
-  // Select system prompt based on mode
-  let systemText;
-  if (mode === 'song' && SONG_PROMPT) {
-    systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
-    console.log('Using SONG mode system prompt');
-  } else if (mode === 'talk' && REMINDER_PROMPT) {
-    systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
-    console.log('Using TALK mode system prompt');
-  } else {
-    systemText = SYSTEM_PROMPT;
-    console.log('Using LESSON mode system prompt');
-  }
+  let systemText = SYSTEM_PROMPT;
+  if (mode === 'song' && SONG_PROMPT)       { systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT; }
+  else if (mode === 'talk' && REMINDER_PROMPT) { systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT; }
 
   getHistory();
   addToHistory('user', message);
   const messages = [...conversationHistory];
 
-  console.log('Sending', messages.length, 'messages to Claude (history depth:', messages.length - 1, ')');
-
   const claudeBody = JSON.stringify({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1000,
-    system: systemText,
-    messages: messages
+    model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
+    system: systemText, messages
   });
 
   const claudeOptions = {
-    hostname: 'api.anthropic.com',
-    path: '/v1/messages',
-    method: 'POST',
+    hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'Content-Length': Buffer.byteLength(claudeBody)
+      'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(claudeBody)
     }
   };
 
   const claudeReq = https.request(claudeOptions, (claudeRes) => {
     let data = '';
     claudeRes.on('data', chunk => { data += chunk; });
-    claudeRes.on('end', () => {
+    claudeRes.on('end', async () => {
       try {
         const parsed = JSON.parse(data);
         if (claudeRes.statusCode !== 200) {
-          console.error('Claude error:', data);
           conversationHistory.pop();
-          return res.status(claudeRes.statusCode).json({
-            error: 'Claude API error',
-            detail: parsed
-          });
+          return res.status(claudeRes.statusCode).json({ error: 'Claude API error', detail: parsed });
         }
-
         const fullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
         addToHistory('assistant', fullText);
-        console.log('claude-tts full response:', fullText.slice(0, 120));
-        console.log('History now', conversationHistory.length, 'messages');
+        console.log('claude-tts response:', fullText.slice(0, 80));
 
-        // Parse pipe-delimited response
         const { spoken, commands } = parsePipeResponse(fullText);
+        if (!spoken) return res.status(500).json({ error: 'Empty spoken text' });
 
-        if (!spoken) {
-          return res.status(500).json({ error: 'Empty spoken text from Claude' });
-        }
-
-        console.log('claude-tts spoken:', spoken.slice(0, 80));
-        if (commands) console.log('claude-tts commands:', commands.slice(0, 80));
-
-        // Call Google TTS with spoken text only
-        const ttsBody = JSON.stringify({
-          input: { text: spoken },
-          voice: { languageCode: LANGUAGE_CODE, name: VOICE_NAME },
-          audioConfig: { audioEncoding: 'MP3' }
-        });
-
-        const ttsOptions = {
-          hostname: 'texttospeech.googleapis.com',
-          path: '/v1/text:synthesize?key=' + encodeURIComponent(GOOGLE_API_KEY),
-          method: 'POST',
-          agent: googleAgent,
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(ttsBody)
-          }
-        };
-
-        const ttsReq = https.request(ttsOptions, (ttsRes) => {
-          let ttsData = '';
-          ttsRes.on('data', chunk => { ttsData += chunk; });
-          ttsRes.on('end', () => {
-            try {
-              const ttsParsed = JSON.parse(ttsData);
-              if (!ttsParsed.audioContent) {
-                console.error('TTS error in claude-tts:', JSON.stringify(ttsParsed));
-                return res.status(500).json({ error: 'No audio returned from TTS' });
-              }
-
-              const audioBuffer = Buffer.from(ttsParsed.audioContent, 'base64');
-
-              // Return MP3 with spoken text and pipe commands in headers
-              res.set({
-                'Content-Type': 'audio/mpeg',
-                'Content-Length': audioBuffer.length,
-                'X-Vizi-Text':     encodeURIComponent(spoken.substring(0, 500)),
-                'X-Vizi-Commands': encodeURIComponent(commands.substring(0, 500)),
-                'Cache-Control':   'no-cache'
-              });
-              res.send(audioBuffer);
-
-            } catch (err) {
-              res.status(500).json({ error: 'TTS parse error', detail: err.message });
-            }
+        try {
+          const audioBuffer = await synthesizeToBuffer(spoken);
+          res.set({
+            'Content-Type': 'audio/mpeg', 'Content-Length': audioBuffer.length,
+            'X-Vizi-Text':     encodeURIComponent(spoken.substring(0, 500)),
+            'X-Vizi-Commands': encodeURIComponent(commands.substring(0, 500)),
+            'Cache-Control':   'no-cache'
           });
-        });
-
-        ttsReq.on('error', err => {
-          res.status(500).json({ error: 'TTS request failed', detail: err.message });
-        });
-
-        ttsReq.write(ttsBody);
-        ttsReq.end();
-
+          res.send(audioBuffer);
+        } catch (ttsErr) {
+          res.status(500).json({ error: 'TTS failed', detail: ttsErr.message });
+        }
       } catch (err) {
         conversationHistory.pop();
         res.status(500).json({ error: 'Parse error', detail: err.message });
       }
     });
   });
-
   claudeReq.on('error', err => {
-    console.error('Claude request error:', err.message);
     conversationHistory.pop();
     res.status(500).json({ error: 'Claude request failed', detail: err.message });
   });
-
   claudeReq.write(claudeBody);
   claudeReq.end();
 });
 
-// ─── Google STT ──────────────────────────────────────────────────────────────
-// POST /stt
-// Request:  { "audio": "<base64 encoded LINEAR16 PCM>", "sampleRate": 17000 }
-// Response: { "transcript": "what the user said", "confidence": 0.95 }
+// ─── STT + Claude + TTS combined — single round trip from CoreS3 ──────────────
+// POST /stt-claude-tts
+// Request:  { "audio": "<base64 LINEAR16>", "sampleRate": 17000, "mode": "general" }
+// Response: MP3 bytes + X-Vizi-Text + X-Vizi-Commands + X-Vizi-Transcript headers
+// Eliminates one full round trip vs separate /stt then /claude-tts calls
 // ─────────────────────────────────────────────────────────────────────────────
+app.post('/stt-claude-tts', async (req, res) => {
+  const audioContent = req.body && req.body.audio;
+  const sampleRate   = (req.body && req.body.sampleRate) || 17000;
+  const mode         = (req.body && req.body.mode) || 'general';
+
+  console.log('POST /stt-claude-tts sampleRate:', sampleRate, 'audioLen:', audioContent && audioContent.length);
+
+  if (!audioContent) return res.status(400).json({ error: 'Missing audio content' });
+  if (!GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
+  if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+
+  // ── Step 1: Google STT ────────────────────────────────────────────────────
+  let transcript = '';
+  try {
+    const sttBody = JSON.stringify({
+      config: { encoding: 'LINEAR16', sampleRateHertz: sampleRate, languageCode: 'en-US', model: 'default' },
+      audio:  { content: audioContent }
+    });
+
+    transcript = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'speech.googleapis.com',
+        path: '/v1/speech:recognize?key=' + encodeURIComponent(GOOGLE_API_KEY),
+        method: 'POST', agent: googleAgent,
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(sttBody) }
+      };
+      const req = https.request(options, (sttRes) => {
+        let data = '';
+        sttRes.on('data', chunk => { data += chunk; });
+        sttRes.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (sttRes.statusCode !== 200) return reject(new Error('STT error: ' + sttRes.statusCode));
+            if (!parsed.results || parsed.results.length === 0) return resolve('');
+            resolve(parsed.results[0].alternatives[0].transcript || '');
+          } catch (err) { reject(err); }
+        });
+      });
+      req.on('error', err => reject(err));
+      req.write(sttBody);
+      req.end();
+    });
+  } catch (err) {
+    console.error('STT error:', err.message);
+    return res.status(500).json({ error: 'STT failed', detail: err.message });
+  }
+
+  console.log('STT transcript:', transcript);
+
+  if (!transcript || transcript.trim().length === 0) {
+    return res.json({ transcript: '', empty: true });
+  }
+
+  // ── Step 2: Claude ────────────────────────────────────────────────────────
+  let fullText = '';
+  try {
+    let systemText = SYSTEM_PROMPT;
+    if (mode === 'song' && SONG_PROMPT)          systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
+    else if (mode === 'talk' && REMINDER_PROMPT) systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
+
+    getHistory();
+    addToHistory('user', transcript.trim());
+    const messages = [...conversationHistory];
+
+    const claudeBody = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
+      system: systemText, messages
+    });
+
+    fullText = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+        headers: {
+          'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(claudeBody)
+        }
+      };
+      const req = https.request(options, (claudeRes) => {
+        let data = '';
+        claudeRes.on('data', chunk => { data += chunk; });
+        claudeRes.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (claudeRes.statusCode !== 200) {
+              conversationHistory.pop();
+              return reject(new Error('Claude error: ' + claudeRes.statusCode));
+            }
+            const text = parsed.content && parsed.content[0] && parsed.content[0].text || '';
+            addToHistory('assistant', text);
+            console.log('stt-claude-tts Claude:', text.slice(0, 80));
+            resolve(text);
+          } catch (err) { conversationHistory.pop(); reject(err); }
+        });
+      });
+      req.on('error', err => { conversationHistory.pop(); reject(err); });
+      req.write(claudeBody);
+      req.end();
+    });
+  } catch (err) {
+    console.error('Claude error:', err.message);
+    return res.status(500).json({ error: 'Claude failed', detail: err.message });
+  }
+
+  // ── Step 3: Google TTS ────────────────────────────────────────────────────
+  const { spoken, commands } = parsePipeResponse(fullText);
+  if (!spoken) return res.status(500).json({ error: 'Empty spoken text from Claude' });
+
+  try {
+    const audioBuffer = await synthesizeToBuffer(spoken);
+    console.log('stt-claude-tts complete — transcript:', transcript, 'spoken:', spoken.slice(0, 60));
+
+    res.set({
+      'Content-Type':      'audio/mpeg',
+      'Content-Length':    audioBuffer.length,
+      'X-Vizi-Transcript': encodeURIComponent(transcript.substring(0, 200)),
+      'X-Vizi-Text':       encodeURIComponent(spoken.substring(0, 500)),
+      'X-Vizi-Commands':   encodeURIComponent(commands.substring(0, 500)),
+      'Cache-Control':     'no-cache'
+    });
+    res.send(audioBuffer);
+  } catch (err) {
+    console.error('TTS error:', err.message);
+    res.status(500).json({ error: 'TTS failed', detail: err.message });
+  }
+});
+
+// ─── Google STT standalone ────────────────────────────────────────────────────
 app.post('/stt', (req, res) => {
   console.log('POST /stt received');
-
-  if (!GOOGLE_API_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
-  }
+  if (!GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
 
   const audioContent = req.body && req.body.audio;
   const sampleRate   = (req.body && req.body.sampleRate) || 17000;
-
-  if (!audioContent) {
-    return res.status(400).json({ error: 'Missing audio content' });
-  }
-
-  console.log('STT audio content length:', audioContent.length, 'sampleRate:', sampleRate);
+  if (!audioContent) return res.status(400).json({ error: 'Missing audio content' });
 
   const sttBody = JSON.stringify({
-    config: {
-      encoding: 'LINEAR16',
-      sampleRateHertz: sampleRate,
-      languageCode: 'en-US',
-      model: 'default'
-    },
-    audio: {
-      content: audioContent
-    }
+    config: { encoding: 'LINEAR16', sampleRateHertz: sampleRate, languageCode: 'en-US', model: 'default' },
+    audio:  { content: audioContent }
   });
 
   const options = {
     hostname: 'speech.googleapis.com',
     path: '/v1/speech:recognize?key=' + encodeURIComponent(GOOGLE_API_KEY),
-    method: 'POST',
-    agent: googleAgent,
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(sttBody)
-    }
+    method: 'POST', agent: googleAgent,
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(sttBody) }
   };
 
   const googleReq = https.request(options, (googleRes) => {
@@ -455,162 +458,78 @@ app.post('/stt', (req, res) => {
     googleRes.on('end', () => {
       try {
         const parsed = JSON.parse(data);
-        console.log('STT response:', JSON.stringify(parsed).slice(0, 200));
-
-        if (googleRes.statusCode !== 200) {
-          console.error('STT error:', JSON.stringify(parsed));
-          return res.status(googleRes.statusCode).json({
-            error: 'Google STT error',
-            detail: parsed
-          });
-        }
-
-        if (!parsed.results || parsed.results.length === 0) {
-          console.log('STT: no results — silence or unclear audio');
-          return res.json({ transcript: '', confidence: 0 });
-        }
-
+        if (googleRes.statusCode !== 200) return res.status(googleRes.statusCode).json({ error: 'Google STT error', detail: parsed });
+        if (!parsed.results || parsed.results.length === 0) return res.json({ transcript: '', confidence: 0 });
         const transcript = parsed.results[0].alternatives[0].transcript || '';
         const confidence = parsed.results[0].alternatives[0].confidence || 0;
-
-        console.log('STT transcript:', transcript, 'confidence:', confidence);
         res.json({ transcript, confidence });
-
-      } catch (err) {
-        res.status(500).json({ error: 'STT parse error', detail: err.message });
-      }
+      } catch (err) { res.status(500).json({ error: 'STT parse error', detail: err.message }); }
     });
   });
-
-  googleReq.on('error', err => {
-    console.error('STT request error:', err.message);
-    res.status(500).json({ error: 'STT request failed', detail: err.message });
-  });
-
+  googleReq.on('error', err => res.status(500).json({ error: 'STT request failed', detail: err.message }));
   googleReq.write(sttBody);
   googleReq.end();
 });
 
-// ─── Song Preview (YouTube direct video link) ────────────────────────────────
-// POST /song-preview
-// Request:  { "query": "Wonderwall Oasis" }
-// Response: { "videoUrl": "https://www.youtube.com/watch?v=...", "title": "...", "query": "..." }
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Song Preview ─────────────────────────────────────────────────────────────
 app.post('/song-preview', async (req, res) => {
   const query = req.body && req.body.query;
-  console.log('POST /song-preview query:', query);
-
   if (!query) return res.status(400).json({ error: 'Missing query' });
-
   const fallbackUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
-
-  if (!YOUTUBE_API_KEY) {
-    console.warn('YOUTUBE_API_KEY not set — returning search fallback');
-    return res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
-  }
+  if (!YOUTUBE_API_KEY) return res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
 
   try {
     const searchPath = '/youtube/v3/search?part=snippet&type=video&maxResults=1'
-      + '&q=' + encodeURIComponent(query)
-      + '&key=' + encodeURIComponent(YOUTUBE_API_KEY);
+      + '&q=' + encodeURIComponent(query) + '&key=' + encodeURIComponent(YOUTUBE_API_KEY);
 
     const result = await new Promise((resolve, reject) => {
-      const options = {
-        hostname: 'www.googleapis.com',
-        path: searchPath,
-        method: 'GET'
-      };
+      const options = { hostname: 'www.googleapis.com', path: searchPath, method: 'GET' };
       const req = https.request(options, (ytRes) => {
         let data = '';
         ytRes.on('data', chunk => { data += chunk; });
-        ytRes.on('end', () => {
-          console.log('YouTube raw response:', data.slice(0, 500));
-          try {
-            resolve({ status: ytRes.statusCode, data: JSON.parse(data) });
-          } catch (err) {
-            reject(new Error('YouTube parse error: ' + err.message));
-          }
-        });
+        ytRes.on('end', () => { try { resolve({ status: ytRes.statusCode, data: JSON.parse(data) }); } catch (err) { reject(err); } });
       });
       req.on('error', err => reject(err));
       req.end();
     });
 
     const items = result.data.items;
-    if (!items || items.length === 0) {
-      console.log('YouTube: no results for query:', query);
-      return res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
-    }
-
-    const videoId  = items[0].id.videoId;
-    const title    = items[0].snippet.title;
-    const videoUrl = 'https://www.youtube.com/watch?v=' + videoId;
-
-    console.log('YouTube preview — title:', title, 'videoId:', videoId);
-    res.json({ videoUrl, title, query, fallback: false });
-
+    if (!items || items.length === 0) return res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
+    const videoId = items[0].id.videoId;
+    const title   = items[0].snippet.title;
+    res.json({ videoUrl: 'https://www.youtube.com/watch?v=' + videoId, title, query, fallback: false });
   } catch (err) {
-    console.error('YouTube preview error:', err.message);
     res.json({ videoUrl: fallbackUrl, title: query, query, fallback: true });
   }
 });
 
-// ─── Claude API proxy ────────────────────────────────────────────────────────
-// Modes:
-//   "lesson" — SYSTEM_PROMPT only (default for regular tutoring)
-//   "talk"   — SYSTEM_PROMPT + REMINDER_PROMPT (for conversational mode)
-//   "song"   — SYSTEM_PROMPT + SONG_PROMPT (for song learning mode)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Claude standalone ────────────────────────────────────────────────────────
 app.post('/claude', (req, res) => {
   let message = req.body && req.body.message;
   const mode  = req.body && req.body.mode;
-
-  console.log('POST /claude mode:', mode, 'message:', message && message.slice(0, 80));
-
-  if (!message) {
-    return res.status(400).json({ error: 'Missing message' });
-  }
-  if (!ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
-  }
+  if (!message) return res.status(400).json({ error: 'Missing message' });
+  if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
-  let systemText;
-  if (mode === 'song' && SONG_PROMPT) {
-    systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
-    console.log('Using SONG mode system prompt');
-  } else if (mode === 'talk' && REMINDER_PROMPT) {
-    systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
-    console.log('Using TALK mode system prompt');
-  } else {
-    systemText = SYSTEM_PROMPT;
-    console.log('Using LESSON mode system prompt');
-  }
+  let systemText = SYSTEM_PROMPT;
+  if (mode === 'song' && SONG_PROMPT)          systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
+  else if (mode === 'talk' && REMINDER_PROMPT) systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
 
   getHistory();
   addToHistory('user', message);
-
   const messages = [...conversationHistory];
 
-  console.log('Sending', messages.length, 'messages to Claude (history depth:', messages.length - 1, ')');
-
   const claudeBody = JSON.stringify({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1000,
-    system: systemText,
-    messages: messages
+    model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
+    system: systemText, messages
   });
 
   const options = {
-    hostname: 'api.anthropic.com',
-    path: '/v1/messages',
-    method: 'POST',
+    hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'Content-Length': Buffer.byteLength(claudeBody)
+      'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(claudeBody)
     }
   };
 
@@ -618,131 +537,68 @@ app.post('/claude', (req, res) => {
     let data = '';
     claudeRes.on('data', chunk => { data += chunk; });
     claudeRes.on('end', () => {
-      console.log('Claude status:', claudeRes.statusCode);
       try {
         const parsed = JSON.parse(data);
         if (claudeRes.statusCode !== 200) {
-          console.error('Claude error:', data);
           conversationHistory.pop();
-          return res.status(claudeRes.statusCode).json({
-            error: 'Claude API error',
-            detail: parsed
-          });
+          return res.status(claudeRes.statusCode).json({ error: 'Claude API error', detail: parsed });
         }
         const text = parsed.content && parsed.content[0] && parsed.content[0].text || '';
         addToHistory('assistant', text);
-        console.log('History now', conversationHistory.length, 'messages');
         res.json({ text });
-      } catch (err) {
-        conversationHistory.pop();
-        res.status(500).json({ error: 'Parse error', detail: err.message });
-      }
+      } catch (err) { conversationHistory.pop(); res.status(500).json({ error: 'Parse error', detail: err.message }); }
     });
   });
-
-  claudeReq.on('error', err => {
-    console.error('Claude request error:', err.message);
-    conversationHistory.pop();
-    res.status(500).json({ error: 'Claude request failed', detail: err.message });
-  });
-
+  claudeReq.on('error', err => { conversationHistory.pop(); res.status(500).json({ error: 'Claude request failed', detail: err.message }); });
   claudeReq.write(claudeBody);
   claudeReq.end();
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// ─── SONG SESSION ENDPOINTS ──────────────────────────────────────════════════
-// ════════════════════════════════════════════════════════════════════════════
-
+// ─── Session endpoints ────────────────────────────────────────────────────────
 app.post('/session-create', (req, res) => {
   const songTitle = (req.body && req.body.songTitle) || '';
   const id = createSession(songTitle);
-  console.log('Session created:', id, 'song:', songTitle);
-  res.json({
-    sessionId: id,
-    uploadUrl: `https://aivisualguitar.com/upload?session=${id}`,
-    qrContent: `https://aivisualguitar.com/upload?session=${id}`
-  });
+  res.json({ sessionId: id, uploadUrl: `https://aivisualguitar.com/upload?session=${id}`, qrContent: `https://aivisualguitar.com/upload?session=${id}` });
 });
-
 app.get('/session-create', (req, res) => {
   const songTitle = req.query.song || '';
   const id = createSession(songTitle);
-  console.log('Session created (GET):', id, 'song:', songTitle);
-  res.json({
-    sessionId: id,
-    uploadUrl: `https://aivisualguitar.com/upload?session=${id}`,
-    qrContent: `https://aivisualguitar.com/upload?session=${id}`
-  });
+  res.json({ sessionId: id, uploadUrl: `https://aivisualguitar.com/upload?session=${id}`, qrContent: `https://aivisualguitar.com/upload?session=${id}` });
 });
-
 app.get('/session-status/:id', (req, res) => {
   const id = req.params.id.trim().toUpperCase();
   const session = sessions[id];
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found', id });
-  }
-  res.json({
-    sessionId: id,
-    status: session.status,
-    songTitle: session.songTitle,
-    type: session.type,
-    chords: session.chords,
-    progression: session.progression,
-    tabTokens: session.tabTokens,
-    error: session.error
-  });
+  if (!session) return res.status(404).json({ error: 'Session not found', id });
+  res.json({ sessionId: id, status: session.status, songTitle: session.songTitle, type: session.type, chords: session.chords, progression: session.progression, tabTokens: session.tabTokens, error: session.error });
 });
-
-// GET /session-prompt/:id
 app.get('/session-prompt/:id', (req, res) => {
   const id = req.params.id.trim().toUpperCase();
   const session = sessions[id];
-
-  if (!session) {
-    return res.status(404).json({ ready: false, error: 'Session not found', id });
-  }
-
-  if (session.status !== 'ready') {
-    return res.json({ ready: false, status: session.status, id });
-  }
+  if (!session) return res.status(404).json({ ready: false, error: 'Session not found', id });
+  if (session.status !== 'ready') return res.json({ ready: false, status: session.status, id });
 
   const songTitle   = session.songTitle   || 'this song';
   const progression = session.progression || '';
   const type        = session.type        || 'chords';
   const chords      = session.chords      || [];
   const capo        = session.capo        || 0;
-
-  const chordList = chords.length > 0 ? chords.join(', ') : 'various chords';
+  const chordList   = chords.length > 0 ? chords.join(', ') : 'various chords';
 
   let message = 'SONG RECEIVED: ' + songTitle + '. ';
   if (progression) message += 'Full progression data: ' + progression + '. ';
   message += 'Unique chords in this song: ' + chordList + '. ';
   if (capo > 0) message += 'Capo is on fret ' + capo + '. ';
-  if (capo === 0) message += 'No capo for this song. ';
+  else          message += 'No capo for this song. ';
   if (type === 'tab' || type === 'mixed') message += 'This song also includes tab and melody sections. ';
   message += 'You now have this song loaded. Follow your Song Mode initial response rules exactly. Your spoken introduction must come first, then append the CAPO command as a pipe command at the very end of your response.';
 
-  console.log('Session prompt built for:', id, 'song:', songTitle);
-
-  res.json({
-    ready: true,
-    sessionId: id,
-    songTitle: songTitle,
-    message: message,
-    mode: 'song'
-  });
+  res.json({ ready: true, sessionId: id, songTitle, message, mode: 'song' });
 });
 
 app.post('/song-upload', (req, res, next) => {
-  if (!multer) {
-    return res.status(500).json({ error: 'File upload not available — multer not installed' });
-  }
+  if (!multer) return res.status(500).json({ error: 'File upload not available' });
   upload.single('file')(req, res, (err) => {
-    if (err) {
-      console.error('Multer error:', err.message);
-      return res.status(400).json({ error: 'File upload error', detail: err.message });
-    }
+    if (err) return res.status(400).json({ error: 'File upload error', detail: err.message });
     handleSongUpload(req, res);
   });
 });
@@ -751,194 +607,107 @@ async function handleSongUpload(req, res) {
   const sessionId  = (req.body && req.body.session) || (req.query && req.query.session);
   const pastedText = req.body && req.body.text;
   const file       = req.file;
-
-  console.log('Song upload — session:', sessionId, 'hasFile:', !!file, 'hasText:', !!pastedText);
-
   if (!sessionId) return res.status(400).json({ error: 'Missing session ID' });
-
   const id = sessionId.toUpperCase();
   const session = sessions[id];
   if (!session) return res.status(404).json({ error: 'Session not found or expired', id });
   if (!file && !pastedText) return res.status(400).json({ error: 'No file or text provided' });
   if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
-
   session.status = 'processing';
 
   try {
     let claudeContent = [];
-    let contentDescription = '';
-
     if (file) {
       const mimeType   = file.mimetype || 'image/jpeg';
       const base64Data = file.buffer.toString('base64');
-
       if (mimeType === 'application/pdf') {
-        claudeContent = [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } },
-          { type: 'text', text: buildAnalysisPrompt(session.songTitle) }
-        ];
+        claudeContent = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } }, { type: 'text', text: buildAnalysisPrompt(session.songTitle) }];
       } else {
-        claudeContent = [
-          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } },
-          { type: 'text', text: buildAnalysisPrompt(session.songTitle) }
-        ];
+        claudeContent = [{ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } }, { type: 'text', text: buildAnalysisPrompt(session.songTitle) }];
       }
-      contentDescription = `${mimeType} file (${Math.round(file.size/1024)}KB)`;
     } else {
-      claudeContent      = [{ type: 'text', text: buildTextAnalysisPrompt(pastedText, session.songTitle) }];
-      contentDescription = `pasted text (${pastedText.length} chars)`;
+      claudeContent = [{ type: 'text', text: buildTextAnalysisPrompt(pastedText, session.songTitle) }];
     }
 
-    console.log('Sending to Claude Vision:', contentDescription);
-
     const claudeBody = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
-      system: `You are a music analysis assistant for the Vizi AI guitar tutor system.
-Your job is to extract chord and tab information from uploaded music and return it as structured JSON.
-Always respond with ONLY valid JSON — no markdown, no explanation, no code fences.`,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
+      system: `You are a music analysis assistant for the Vizi AI guitar tutor system. Your job is to extract chord and tab information from uploaded music and return it as structured JSON. Always respond with ONLY valid JSON — no markdown, no explanation, no code fences.`,
       messages: [{ role: 'user', content: claudeContent }]
     });
 
     const result = await callClaudeAPI(claudeBody);
     const parsed = parseClaudeAnalysis(result);
 
-    session.type        = parsed.type;
-    session.chords      = parsed.chords      || [];
-    session.progression = parsed.progression || '';
-    session.tabTokens   = parsed.tabTokens   || [];
-    session.rawText     = parsed.rawText      || '';
-    session.songTitle   = parsed.songTitle    || session.songTitle;
-    session.capo        = parsed.capo         || 0;
-    session.status      = 'ready';
+    session.type = parsed.type; session.chords = parsed.chords || [];
+    session.progression = parsed.progression || ''; session.tabTokens = parsed.tabTokens || [];
+    session.rawText = parsed.rawText || ''; session.songTitle = parsed.songTitle || session.songTitle;
+    session.capo = parsed.capo || 0; session.status = 'ready';
 
-    console.log('Session', id, 'ready — type:', session.type, 'chords:', session.chords.join(','));
-
-    res.json({
-      status: 'ready',
-      sessionId: id,
-      type: session.type,
-      chords: session.chords,
-      progression: session.progression,
-      message: 'Song uploaded successfully. Vizi is ready!'
-    });
-
+    res.json({ status: 'ready', sessionId: id, type: session.type, chords: session.chords, progression: session.progression, message: 'Song uploaded successfully. Vizi is ready!' });
   } catch (err) {
-    console.error('Song upload error:', err.message);
-    session.status = 'error';
-    session.error  = err.message;
+    session.status = 'error'; session.error = err.message;
     res.status(500).json({ error: 'Failed to process upload', detail: err.message });
   }
 }
 
-// ─── Prompt builders ─────────────────────────────────────────────────────────
-
 function buildAnalysisPrompt(songTitle) {
   return `Analyze this image of sheet music, a chord chart, or guitar tab.
 ${songTitle ? `The song is "${songTitle}".` : ''}
-
 Return ONLY this JSON structure (no markdown, no explanation):
-{
-  "songTitle": "song name if visible or provided",
-  "type": "chords",
-  "capo": 0,
-  "chords": ["G","Em","C","D"],
-  "progression": "[Verse] G Em C D | [Chorus] C G Am F",
-  "tabTokens": [],
-  "rawText": "any text you extracted"
-}
-
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"any text you extracted"}
 RULES:
-- "type" must be "chords" if it is a chord chart/lead sheet, "tab" if it is guitar tablature with string/fret numbers, or "mixed" if both.
-- "capo" must be a number — 0 if no capo, or the fret number if a capo is indicated (e.g. "Capo 2", "Capo III", or a capo symbol on the chart). Look carefully for capo markings.
-- "chords" must use standard chord names: G, Am, C7, F#m, Bm, D/F#, etc. These are the chord shapes the student fingers — already adjusted for capo position if capo is present.
-- "progression" should preserve section labels like [Verse], [Chorus] if visible.
-- "tabTokens" should only be populated for "tab" or "mixed" type. Each entry is a group of string-fret tokens like ["SHe2","SB3"] for simultaneous notes or ["SHe2"] for single notes. Use string codes: He=high E, B, G, D, A, Le=low E.
-- If you cannot read the image clearly, return type:"chords" with empty chords array and explain in rawText.`;
+- "type" must be "chords", "tab", or "mixed"
+- "capo" must be a number — 0 if no capo
+- "chords" must use standard chord names
+- "progression" should preserve section labels if visible
+- "tabTokens" only for tab/mixed. String codes: He=high E, B, G, D, A, Le=low E
+- If you cannot read clearly, return type:"chords" with empty chords array`;
 }
 
 function buildTextAnalysisPrompt(text, songTitle) {
   return `Analyze this guitar chord chart or tab text.
 ${songTitle ? `The song is "${songTitle}".` : ''}
-
 TEXT:
 ${text}
-
 Return ONLY this JSON structure (no markdown, no explanation):
-{
-  "songTitle": "song name if visible or provided",
-  "type": "chords",
-  "capo": 0,
-  "chords": ["G","Em","C","D"],
-  "progression": "[Verse] G Em C D | [Chorus] C G Am F",
-  "tabTokens": [],
-  "rawText": "${text.replace(/"/g, "'").slice(0, 200)}"
-}
-
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"${text.replace(/"/g, "'").slice(0, 200)}"}
 RULES:
-- "type" must be "chords" if it is a chord chart, "tab" if it is guitar tablature, or "mixed" if both.
-- "chords" must list every unique chord used, using standard names.
-- "progression" should preserve the full chord sequence with section labels if present.
-- "capo" must be a number — 0 if no capo, or the fret number if a capo is mentioned in the text (e.g. "Capo 2", "Capo III").
-- "tabTokens" only for tab sections — each entry is an array of SF tokens like ["SHe2","SB3"].
-- String codes: He=high E, B, G, D, A, Le=low E.`;
+- "type" must be "chords", "tab", or "mixed"
+- "chords" must list every unique chord used
+- "capo" must be a number — 0 if no capo
+- "tabTokens" only for tab sections. String codes: He=high E, B, G, D, A, Le=low E`;
 }
-
-// ─── Claude API helper (Promise-based) ───────────────────────────────────────
 
 function callClaudeAPI(claudeBody) {
   return new Promise((resolve, reject) => {
     const options = {
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Length': Buffer.byteLength(claudeBody)
-      }
+      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(claudeBody) }
     };
-
     const req = https.request(options, (claudeRes) => {
       let data = '';
       claudeRes.on('data', chunk => { data += chunk; });
       claudeRes.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-          if (claudeRes.statusCode !== 200) {
-            return reject(new Error(`Claude API ${claudeRes.statusCode}: ${JSON.stringify(parsed)}`));
-          }
-          const text = parsed.content && parsed.content[0] && parsed.content[0].text || '';
-          resolve(text);
-        } catch (err) {
-          reject(new Error('Parse error: ' + err.message));
-        }
+          if (claudeRes.statusCode !== 200) return reject(new Error(`Claude API ${claudeRes.statusCode}: ${JSON.stringify(parsed)}`));
+          resolve(parsed.content && parsed.content[0] && parsed.content[0].text || '');
+        } catch (err) { reject(err); }
       });
     });
-
     req.on('error', err => reject(err));
     req.write(claudeBody);
     req.end();
   });
 }
 
-// ─── Parse Claude's JSON response ────────────────────────────────────────────
-
 function parseClaudeAnalysis(text) {
   const clean = text.replace(/```json|```/g, '').trim();
-  try {
-    return JSON.parse(clean);
-  } catch(e) {
-    console.error('Failed to parse Claude analysis JSON:', clean.slice(0, 200));
-    return { type: 'chords', chords: [], progression: '', tabTokens: [], rawText: text };
-  }
+  try { return JSON.parse(clean); }
+  catch(e) { return { type: 'chords', chords: [], progression: '', tabTokens: [], rawText: text }; }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// ─── Start ───────────────────────────────────────────────────────────────────
-// ════════════════════════════════════════════════════════════════════════════
-
+// ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('Vizi TTS Proxy listening on port ' + PORT);
