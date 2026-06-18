@@ -12,6 +12,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
 // ─── multer ──────────────────────────────────────────────────────────────────
 let multer;
 try { multer = require('multer'); } catch(e) { multer = null; }
@@ -105,6 +106,38 @@ function parsePipeResponse(fullText) {
   return { spoken: parts[0] || '', commands: parts.slice(1).join('|') };
 }
 
+// ─── Fretboard command relay (mailbox) ────────────────────────────────────────
+// The fretboard can't be reached directly (it's plain-HTTP on the LAN and the
+// app is HTTPS). Instead, commands are queued here and the fretboard polls for
+// them over its own outbound internet connection.
+let fretboardQueue = [];
+const FRETBOARD_QUEUE_MAX = 50;
+
+function enqueueFretboardCommands(commandsStr) {
+  if (!commandsStr) return;
+  commandsStr.split('|').forEach(c => {
+    const cmd = c.trim();
+    if (cmd) fretboardQueue.push(cmd);
+  });
+  if (fretboardQueue.length > FRETBOARD_QUEUE_MAX) {
+    fretboardQueue = fretboardQueue.slice(-FRETBOARD_QUEUE_MAX);
+  }
+}
+
+// Fretboard polls this a few times a second; returns the next command or null
+app.get('/fretboard-poll', (req, res) => {
+  const command = fretboardQueue.shift() || null;
+  res.json({ command, remaining: fretboardQueue.length });
+});
+
+// Manual enqueue — handy for testing without the app
+app.post('/fretboard-command', (req, res) => {
+  const command = req.body && req.body.command;
+  if (!command) return res.status(400).json({ error: 'Missing command' });
+  enqueueFretboardCommands(command);
+  res.json({ status: 'queued', command, queued: fretboardQueue.length });
+});
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
@@ -114,7 +147,8 @@ app.get('/health', (req, res) => {
     historyLength: conversationHistory.length,
     historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
     activeSessions: Object.keys(sessions).length,
-    multerReady: !!multer, songPromptReady: !!SONG_PROMPT
+    multerReady: !!multer, songPromptReady: !!SONG_PROMPT,
+    fretboardQueued: fretboardQueue.length
   });
 });
 
@@ -271,6 +305,7 @@ app.post('/claude-tts', (req, res) => {
         console.log('claude-tts response:', fullText.slice(0, 80));
 
         const { spoken, commands } = parsePipeResponse(fullText);
+        enqueueFretboardCommands(commands);
         if (!spoken) return res.status(500).json({ error: 'Empty spoken text' });
 
         try {
@@ -299,11 +334,10 @@ app.post('/claude-tts', (req, res) => {
   claudeReq.end();
 });
 
-// ─── STT + Claude + TTS combined — single round trip from CoreS3 ──────────────
+// ─── STT + Claude + TTS combined — single round trip ─────────────────────────
 // POST /stt-claude-tts
 // Request:  { "audio": "<base64 LINEAR16>", "sampleRate": 17000, "mode": "general" }
 // Response: MP3 bytes + X-Vizi-Text + X-Vizi-Commands + X-Vizi-Transcript headers
-// Eliminates one full round trip vs separate /stt then /claude-tts calls
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/stt-claude-tts', async (req, res) => {
   const audioContent = req.body && req.body.audio;
@@ -331,7 +365,7 @@ app.post('/stt-claude-tts', async (req, res) => {
         method: 'POST', agent: googleAgent,
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(sttBody) }
       };
-      const req = https.request(options, (sttRes) => {
+      const sttReq = https.request(options, (sttRes) => {
         let data = '';
         sttRes.on('data', chunk => { data += chunk; });
         sttRes.on('end', () => {
@@ -343,9 +377,9 @@ app.post('/stt-claude-tts', async (req, res) => {
           } catch (err) { reject(err); }
         });
       });
-      req.on('error', err => reject(err));
-      req.write(sttBody);
-      req.end();
+      sttReq.on('error', err => reject(err));
+      sttReq.write(sttBody);
+      sttReq.end();
     });
   } catch (err) {
     console.error('STT error:', err.message);
@@ -382,7 +416,7 @@ app.post('/stt-claude-tts', async (req, res) => {
           'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(claudeBody)
         }
       };
-      const req = https.request(options, (claudeRes) => {
+      const claudeReq = https.request(options, (claudeRes) => {
         let data = '';
         claudeRes.on('data', chunk => { data += chunk; });
         claudeRes.on('end', () => {
@@ -399,9 +433,9 @@ app.post('/stt-claude-tts', async (req, res) => {
           } catch (err) { conversationHistory.pop(); reject(err); }
         });
       });
-      req.on('error', err => { conversationHistory.pop(); reject(err); });
-      req.write(claudeBody);
-      req.end();
+      claudeReq.on('error', err => { conversationHistory.pop(); reject(err); });
+      claudeReq.write(claudeBody);
+      claudeReq.end();
     });
   } catch (err) {
     console.error('Claude error:', err.message);
@@ -410,6 +444,7 @@ app.post('/stt-claude-tts', async (req, res) => {
 
   // ── Step 3: Google TTS ────────────────────────────────────────────────────
   const { spoken, commands } = parsePipeResponse(fullText);
+  enqueueFretboardCommands(commands);
   if (!spoken) return res.status(500).json({ error: 'Empty spoken text from Claude' });
 
   try {
@@ -484,13 +519,13 @@ app.post('/song-preview', async (req, res) => {
 
     const result = await new Promise((resolve, reject) => {
       const options = { hostname: 'www.googleapis.com', path: searchPath, method: 'GET' };
-      const req = https.request(options, (ytRes) => {
+      const ytReq = https.request(options, (ytRes) => {
         let data = '';
         ytRes.on('data', chunk => { data += chunk; });
         ytRes.on('end', () => { try { resolve({ status: ytRes.statusCode, data: JSON.parse(data) }); } catch (err) { reject(err); } });
       });
-      req.on('error', err => reject(err));
-      req.end();
+      ytReq.on('error', err => reject(err));
+      ytReq.end();
     });
 
     const items = result.data.items;
@@ -684,7 +719,7 @@ function callClaudeAPI(claudeBody) {
       hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(claudeBody) }
     };
-    const req = https.request(options, (claudeRes) => {
+    const apiReq = https.request(options, (claudeRes) => {
       let data = '';
       claudeRes.on('data', chunk => { data += chunk; });
       claudeRes.on('end', () => {
@@ -695,9 +730,9 @@ function callClaudeAPI(claudeBody) {
         } catch (err) { reject(err); }
       });
     });
-    req.on('error', err => reject(err));
-    req.write(claudeBody);
-    req.end();
+    apiReq.on('error', err => reject(err));
+    apiReq.write(claudeBody);
+    apiReq.end();
   });
 }
 
