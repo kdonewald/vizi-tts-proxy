@@ -138,6 +138,22 @@ app.post('/fretboard-command', (req, res) => {
   res.json({ status: 'queued', command, queued: fretboardQueue.length });
 });
 
+// Clear the fretboard queue — called on boot or manually to flush stale commands
+app.post('/fretboard-clear', (req, res) => {
+  const cleared = fretboardQueue.length;
+  fretboardQueue = [];
+  console.log(`[fretboard-clear] Flushed ${cleared} queued command(s)`);
+  res.json({ status: 'ok', cleared });
+});
+
+// Also allow GET so firmware can call it without a body
+app.get('/fretboard-clear', (req, res) => {
+  const cleared = fretboardQueue.length;
+  fretboardQueue = [];
+  console.log(`[fretboard-clear] Flushed ${cleared} queued command(s) via GET`);
+  res.json({ status: 'ok', cleared });
+});
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
