@@ -1,0 +1,3797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lessons — Ai Visual Guitar</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0f1117; --surface:#1a1d2e; --surface2:#22263a;
+    --border:rgba(255,255,255,0.10); --border2:rgba(255,255,255,0.06);
+    --red:#e05540; --red-dark:#c44432; --blue:#4f8ef7;
+    --gold:#e8a020; --teal:#2dd4bf; --green:#3dba72;
+    --vizi:#3dba72; --vizi-light:#2e9658;
+    --text:#f0ede8; --text-mid:#a89f94; --text-light:#6b6560;
+    --white:#1a1d2e; --shadow:rgba(0,0,0,0.35); --shadow-lg:rgba(0,0,0,0.55);
+    --cream:#0f1117; --cream-dark:rgba(255,255,255,0.10); --cream-mid:rgba(255,255,255,0.06);
+    /* strum player */
+    --neck:#3d2a18; --neck-dark:#2a1d10;
+    --slot-empty-bg:rgba(255,255,255,0.10); --slot-empty-border:rgba(255,255,255,0.20);
+    --slot-down-bg:rgba(217,64,37,0.38); --slot-down-border:#D94025;
+    --slot-up-bg:rgba(80,130,210,0.38); --slot-up-border:#6b9fd4;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'DM Sans',sans-serif; font-weight:400;
+    min-height:100vh; padding-bottom:5rem;
+  }
+
+  /* nav */
+  nav{
+    position:sticky; top:0; z-index:50;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:1rem 2rem; background:rgba(15,17,23,0.96);
+    backdrop-filter:blur(12px); border-bottom:1.5px solid var(--border);
+  }
+  .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+  .logo-mark{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;line-height:1}
+  .logo-mark .A{color:var(--red)} .logo-mark .i{color:var(--blue)}
+  .logo-name{font-family:'Playfair Display',serif;font-size:.92rem;font-weight:700;color:var(--text)}
+  .nav-link{font-size:.82rem;font-weight:600;color:var(--text);text-decoration:none;padding:7px 16px;border-radius:6px;border:2px solid var(--cream-dark);transition:all .2s;}
+  .nav-link:hover{border-color:var(--blue);color:var(--blue)}
+
+  /* panel */
+  .panel-wrap{ max-width:920px; margin:1rem auto 0; padding:0 1.5rem; }
+  .cat-panel{display:none;background:var(--surface);border:1.5px solid var(--border);border-radius:16px;box-shadow:0 8px 28px var(--shadow);overflow:hidden;animation:fade-up .35s ease both;}
+  .cat-panel.show{display:block}
+  @keyframes fade-up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .cat-head{padding:1.6rem 2rem 1.4rem;border-bottom:1.5px solid var(--border);background:linear-gradient(135deg,var(--surface) 0%,var(--surface2) 100%);display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;}
+  .cat-stage-tag{font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--red);margin-bottom:.4rem;}
+  .cat-title{font-family:'Playfair Display',serif;font-weight:900;font-size:1.95rem;letter-spacing:-.01em;color:var(--text);}
+  .cat-desc{color:var(--text-mid);font-size:.92rem;margin-top:.5rem;max-width:480px;line-height:1.6;font-weight:400}
+  .cat-close{background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;width:34px;height:34px;flex-shrink:0;cursor:pointer;font-size:1rem;color:var(--text-mid);transition:all .2s;}
+  .cat-close:hover{border-color:var(--red);color:var(--red)}
+  .cat-body{padding:1.4rem 1.75rem 2rem;}
+
+  /* choice row */
+  .choice-row{display:grid;grid-template-columns:1fr 1fr;gap:.85rem;margin-bottom:1.6rem;}
+  .choice-card{background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:1.1rem 1.2rem;cursor:pointer;transition:all .2s;text-align:left;}
+  .choice-card:hover{border-color:var(--blue);background:rgba(27,79,138,0.04)}
+  .choice-card .ci{font-size:1.4rem;margin-bottom:.4rem;display:block}
+  .choice-card .ct{font-weight:700;font-size:.95rem;margin-bottom:.2rem;color:var(--text)}
+  .choice-card .cs{font-size:.76rem;color:var(--text-mid);line-height:1.4}
+  .choice-card.watched .cs{color:var(--green)}
+
+  /* video */
+  .vid-wrap{display:none;}
+  .vid-wrap.show{display:block}
+  .vid-wrap video{width:100%;max-height:420px;border-radius:12px;background:#0a0a0a;display:block;box-shadow:0 6px 20px var(--shadow);}
+  .vid-meta{display:flex;align-items:center;justify-content:space-between;margin-top:.6rem;font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-light);}
+  .vid-meta button{background:none;border:none;color:var(--blue);cursor:pointer;font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.06em;text-transform:uppercase;}
+
+  /* tip */
+  .tip-card{display:none;align-items:flex-start;gap:.8rem;background:rgba(232,160,32,0.07);border:1.5px solid rgba(232,160,32,0.25);border-radius:12px;padding:1rem 1.2rem;margin-bottom:1.6rem;}
+  .tip-card.show{display:flex}
+  .tip-icon{font-size:1.2rem;flex-shrink:0;margin-top:.1rem}
+  .tip-text{font-size:.88rem;line-height:1.55;color:var(--text);font-weight:400}
+  .tip-label{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:.25rem;}
+
+  /* exercise list */
+  .ex-list{display:flex;flex-direction:column;gap:.6rem;}
+  .ex-item{display:flex;align-items:center;gap:.85rem;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:.85rem 1.1rem;cursor:pointer;transition:all .18s;}
+  .ex-item:hover{border-color:var(--blue);background:rgba(27,79,138,0.04)}
+  .ex-num{width:26px;height:26px;border-radius:50%;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);color:var(--text-mid);font-family:'DM Mono',monospace;font-size:.7rem;font-weight:500;display:flex;align-items:center;justify-content:center;}
+  .ex-item.done .ex-num{background:var(--green);color:white}
+  .ex-name{font-size:.95rem;font-weight:600;flex:1;color:var(--text)}
+  .ex-arrow{color:var(--text-light);font-size:.9rem}
+
+  /* choice panel */
+  .choice-panel-label{font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--text-mid);margin-bottom:.75rem;display:block;font-weight:500;}
+  .choice-grid{display:grid;gap:.55rem;margin-bottom:1rem;}
+  .choice-grid.cols-2{grid-template-columns:1fr 1fr}
+  .choice-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
+  .choice-btn{background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:.75rem .85rem;cursor:pointer;transition:all .18s;text-align:left;display:flex;align-items:center;gap:.6rem;}
+  .choice-btn:hover{border-color:var(--blue);background:rgba(27,79,138,0.04);transform:translateY(-1px)}
+  .choice-btn .cb-icon{font-size:1.1rem;flex-shrink:0}
+  .choice-btn .cb-name{font-size:.95rem;font-weight:700;color:var(--text);display:block}
+  .choice-btn .cb-desc{font-size:.78rem;color:var(--text-mid);line-height:1.4;margin-top:.1rem}
+  .choice-btn .cb-arrow{margin-left:auto;color:var(--text-light);font-size:.8rem;flex-shrink:0}
+  .choice-hint{font-size:.85rem;color:var(--text);line-height:1.55;background:rgba(79,142,247,0.08);border:1.5px solid rgba(79,142,247,0.18);border-radius:8px;padding:.75rem .95rem;margin-bottom:1rem;}
+
+  /* tuner */
+  .choice-card.tuner-card{background:rgba(76,175,80,0.06);border-color:rgba(76,175,80,0.3)}
+  .choice-card.tuner-card:hover{border-color:var(--green);background:rgba(76,175,80,0.1)}
+  .tuner-wrap{display:none;margin-bottom:1.6rem;}
+  .tuner-wrap.show{display:block}
+  .tuner-box{background:linear-gradient(180deg,#2a1d12,#1c130c);border-radius:14px;padding:1.6rem 1.4rem 1.4rem;box-shadow:0 10px 28px var(--shadow-lg);}
+  .tuner-status{text-align:center;font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:1rem;}
+  .tuner-note{text-align:center;font-family:'Playfair Display',serif;font-weight:900;font-size:3.2rem;color:#fff;line-height:1;margin-bottom:.3rem;transition:color .15s;}
+  .tuner-note.in-tune{color:var(--green)}
+  .tuner-freq{text-align:center;font-family:'DM Mono',monospace;font-size:.7rem;color:rgba(255,255,255,0.4);margin-bottom:1.2rem;}
+  .tuner-gauge{position:relative;height:54px;margin-bottom:1.3rem;}
+  .tuner-track{position:absolute;left:0;right:0;top:24px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--red) 0%,var(--red) 38%,var(--green) 46%,var(--green) 54%,var(--red) 62%,var(--red) 100%);opacity:.85;}
+  .tuner-center-mark{position:absolute;left:50%;top:14px;width:2px;height:24px;background:rgba(255,255,255,0.5);transform:translateX(-50%);}
+  .tuner-needle{position:absolute;top:0;width:3px;height:54px;background:#fff;left:50%;transform:translateX(-50%);border-radius:2px;box-shadow:0 0 8px rgba(255,255,255,0.6);transition:left .08s linear;}
+  .tuner-needle.in-tune{background:var(--green);box-shadow:0 0 10px var(--green)}
+  .tuner-strings{display:flex;gap:.4rem;justify-content:center;}
+  .tuner-string-btn{flex:1;max-width:64px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;padding:.5rem .3rem;cursor:default;text-align:center;transition:all .15s;}
+  .tuner-string-btn .sname{font-family:'DM Mono',monospace;font-size:.7rem;color:rgba(255,255,255,0.55);display:block}
+  .tuner-string-btn .sled{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.15);margin:.3rem auto 0;}
+  .tuner-string-btn.target{border-color:var(--gold);background:rgba(232,160,32,0.12)}
+  .tuner-string-btn.target .sname{color:var(--gold)}
+  .tuner-string-btn.in-tune .sled{background:var(--green);box-shadow:0 0 6px var(--green)}
+  .tuner-mic-btn{display:block;margin:1.2rem auto 0;background:var(--white);border:none;border-radius:8px;padding:.6rem 1.4rem;font-family:'DM Sans',sans-serif;font-size:.85rem;font-weight:600;color:var(--text);cursor:pointer;transition:all .2s;}
+  .tuner-mic-btn:hover{background:var(--cream)}
+  .tuner-mic-btn.listening{background:var(--red);color:white}
+
+  /* warmup: scale sub-panels and reference */
+  .scale-subpanel{margin-top:.5rem}
+  .scale-key-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.45rem;margin-bottom:.75rem}
+  .scale-key-btn{background:var(--white);border:2px solid var(--cream-dark);border-radius:8px;padding:.65rem .5rem;cursor:pointer;transition:all .18s;text-align:center;}
+  .scale-key-btn:hover{border-color:var(--blue);background:rgba(27,79,138,0.04)}
+  .scale-key-btn .skb-key{font-family:'DM Mono',monospace;font-size:.8rem;font-weight:600;color:var(--text);display:block}
+  .scale-key-btn .skb-desc{font-size:.62rem;color:var(--text-light);margin-top:.15rem}
+  .scale-back-btn{background:none;border:1.5px solid var(--cream-dark);border-radius:6px;padding:.35rem .75rem;cursor:pointer;font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-light);margin-bottom:.85rem;transition:all .2s;}
+  .scale-back-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .scale-ref-card{background:var(--white);border:2px solid var(--cream-dark);border-radius:12px;padding:1rem 1.1rem;margin-bottom:.6rem;}
+  .scale-ref-name{font-family:'DM Mono',monospace;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text);margin-bottom:.35rem;}
+  .scale-ref-pattern{display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;margin-bottom:.5rem;}
+  .step-pill{padding:.2rem .45rem;border-radius:4px;font-family:'DM Mono',monospace;font-size:.62rem;font-weight:600;}
+  .step-pill.W{background:rgba(27,79,138,0.12);color:var(--blue)}
+  .step-pill.H{background:rgba(217,64,37,0.12);color:var(--red)}
+  .step-pill.arrow{color:var(--text-light);font-size:.55rem;padding:0}
+  .scale-ref-notes{display:flex;gap:.3rem;flex-wrap:wrap}
+  .scale-note{display:flex;flex-direction:column;align-items:center;gap:.1rem;padding:.3rem .45rem;border-radius:6px;border:1.5px solid var(--cream-dark);background:var(--cream);min-width:2rem;}
+  .scale-note .sn-name{font-family:'DM Mono',monospace;font-size:.72rem;font-weight:600;color:var(--text)}
+  .scale-note .sn-label{font-family:'DM Mono',monospace;font-size:.52rem;color:var(--text-light)}
+  .scale-note.root{background:rgba(217,64,37,0.1);border-color:var(--red)}
+  .scale-note.root .sn-name{color:var(--red)}
+  .scale-note.third{background:rgba(76,175,80,0.1);border-color:var(--green)}
+  .scale-note.third .sn-name{color:var(--green)}
+  .scale-note.fifth{background:rgba(27,79,138,0.1);border-color:var(--blue)}
+  .scale-note.fifth .sn-name{color:var(--blue)}
+  .scale-note.seventh{background:rgba(232,160,32,0.1);border-color:var(--gold)}
+  .scale-note.seventh .sn-name{color:var(--gold)}
+
+  /* soloing: bandcamp + grouped */
+  .bt-link{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#1da0c3,#1a7fa0);border:none;border-radius:10px;padding:.85rem 1.1rem;text-decoration:none;color:white;margin-bottom:1.25rem;cursor:pointer;transition:all .2s;}
+  .bt-link:hover{filter:brightness(1.1);transform:translateY(-1px)}
+  .bt-link .bt-left{display:flex;align-items:center;gap:.7rem}
+  .bt-link .bt-icon{font-size:1.3rem}
+  .bt-link .bt-name{font-size:.9rem;font-weight:600;display:block}
+  .bt-link .bt-tag{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;opacity:.8;margin-top:1px;display:block}
+  .bt-link .bt-arrow{font-size:1rem;opacity:.8}
+  .solo-group{margin-bottom:1rem}
+  .solo-group-head{display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-radius:8px;background:var(--cream);border:2px solid var(--cream-dark);margin-bottom:.4rem;}
+  .solo-key{font-family:'DM Mono',monospace;font-size:.72rem;font-weight:600;color:var(--text);letter-spacing:.04em}
+  .solo-key-desc{font-size:.72rem;color:var(--text-light)}
+  .solo-scale-row{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;padding-left:.5rem}
+  .solo-scale-btn{background:var(--white);border:2px solid var(--cream-dark);border-radius:8px;padding:.6rem .75rem;cursor:pointer;transition:all .18s;text-align:left;}
+  .solo-scale-btn:hover{border-color:var(--blue);background:rgba(27,79,138,0.04)}
+  .solo-scale-btn .ssb-name{font-size:.82rem;font-weight:700;color:var(--text);display:block;margin-bottom:.15rem}
+  .solo-scale-btn .ssb-desc{font-size:.67rem;color:var(--text-mid)}
+
+  @media(max-width:640px){
+    nav{padding:.85rem 1.2rem}
+    .choice-row{grid-template-columns:1fr}
+    .cat-head,.cat-body{padding-left:1.3rem;padding-right:1.3rem}
+    .scale-key-grid{grid-template-columns:1fr 1fr}
+    .solo-scale-row{grid-template-columns:1fr}
+  }
+  /* ════ STRUM PLAYER ════ */
+
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  /* ── Time signature selector ── */
+  .ts-header{
+    background:var(--cream);border-bottom:2px solid var(--cream-dark);
+    padding:.75rem 1rem .65rem;
+  }
+  .ts-header-label{
+    font-family:'DM Mono',monospace;font-size:.57rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--text-light);margin-bottom:.5rem;display:block;
+  }
+  .ts-tabs{display:flex;gap:.4rem;}
+  .ts-tab{
+    flex:1;padding:.55rem .4rem;border-radius:8px;
+    border:2px solid var(--cream-dark);background:var(--white);
+    cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .ts-tab:hover{border-color:var(--blue);}
+  .ts-tab.active{border-color:var(--red);background:rgba(217,64,37,0.06);}
+  .ts-tab-sig{
+    font-family:'Playfair Display',serif;font-weight:700;
+    font-size:1.1rem;color:var(--text);display:block;line-height:1;
+  }
+  .ts-tab.active .ts-tab-sig{color:var(--red);}
+  .ts-tab-name{
+    font-family:'DM Mono',monospace;font-size:.55rem;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--text-light);display:block;margin-top:.2rem;
+  }
+
+  /* ── Explainer ── */
+  .ts-explainer{
+    background:rgba(27,79,138,0.05);
+    border-bottom:2px solid var(--cream-dark);
+    padding:.8rem 1.1rem;
+  }
+  .ts-explainer-title{font-size:.88rem;font-weight:600;color:var(--text);margin-bottom:.25rem;}
+  .ts-explainer-body{font-size:.78rem;color:var(--text-mid);line-height:1.55;}
+  .ts-explainer-songs{
+    font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.04em;
+    color:var(--text-light);margin-top:.35rem;display:block;
+  }
+
+  /* ── Foot tap row ── */
+  .foot-tap-row{
+    display:flex;gap:.5rem;padding:.65rem 1rem;
+    background:var(--neck-dark);
+    border-bottom:1px solid rgba(255,255,255,0.08);
+    align-items:center;
+  }
+  .foot-tap-label{
+    font-family:'DM Mono',monospace;font-size:.54rem;letter-spacing:.1em;
+    text-transform:uppercase;color:rgba(255,255,255,0.45);
+    flex-shrink:0;width:3rem;
+  }
+  .foot-taps{display:flex;gap:.4rem;flex:1;}
+  .foot-tap{
+    flex:1;height:24px;border-radius:4px;
+    background:rgba(255,255,255,0.08);
+    border:1.5px solid rgba(255,255,255,0.18);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'DM Mono',monospace;font-size:.6rem;
+    color:rgba(255,255,255,0.40);
+    transition:all .1s;
+  }
+  .foot-tap.active{
+    background:rgba(232,160,32,0.28);border-color:var(--gold);
+    color:var(--gold);box-shadow:0 0 10px rgba(232,160,32,0.3);
+  }
+  .foot-tap.downbeat{
+    background:rgba(217,64,37,0.28);border-color:var(--red);
+    color:#ff7055;box-shadow:0 0 10px rgba(217,64,37,0.3);
+  }
+
+  /* ── Pattern selector ── */
+  .pattern-header{
+    background:var(--cream);border-bottom:2px solid var(--cream-dark);
+    padding:.6rem 1rem .55rem;
+  }
+  .pattern-header-label{
+    font-family:'DM Mono',monospace;font-size:.57rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--text-light);margin-bottom:.45rem;display:block;
+  }
+  .pattern-tabs{display:flex;gap:.3rem;overflow-x:auto;}
+  .pattern-tab{
+    flex:1;min-width:0;padding:.42rem .3rem;border-radius:7px;
+    border:2px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.68rem;font-weight:500;
+    color:var(--text-light);cursor:pointer;
+    transition:all .18s;white-space:nowrap;letter-spacing:.04em;text-align:center;
+  }
+  .pattern-tab:hover{border-color:var(--blue);color:var(--text-mid);}
+  .pattern-tab.active{
+    border-color:var(--red);background:rgba(217,64,37,0.08);
+    color:var(--red);font-weight:600;
+  }
+  .pattern-tab.custom-tab{color:var(--text-mid);}
+  .pattern-tab.custom-tab.active{
+    border-color:var(--teal);background:rgba(42,172,184,0.08);color:var(--teal);
+  }
+
+  /* ── Custom hint banner ── */
+  .custom-hint{
+    display:none;
+    background:rgba(42,172,184,0.08);border-bottom:2px solid rgba(42,172,184,0.25);
+    padding:.75rem 1.1rem;
+  }
+  .custom-hint.show{display:block;}
+  .custom-hint-title{font-size:.84rem;font-weight:600;color:var(--teal);margin-bottom:.3rem;}
+  .custom-hint-steps{list-style:none;display:flex;flex-direction:column;gap:.2rem;}
+  .custom-hint-steps li{
+    font-size:.76rem;color:var(--text-mid);line-height:1.45;
+    display:flex;align-items:center;gap:.5rem;
+  }
+  .hint-badge{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:22px;height:22px;border-radius:4px;
+    font-family:'DM Mono',monospace;font-size:.7rem;font-weight:700;
+    flex-shrink:0;
+  }
+  .hint-badge.down{background:var(--slot-down-bg);color:#ff7055;border:1.5px solid var(--slot-down-border);}
+  .hint-badge.up{background:var(--slot-up-bg);color:#90bff0;border:1.5px solid var(--slot-up-border);}
+  .hint-badge.skip{background:var(--slot-empty-bg);color:rgba(255,255,255,0.5);border:1.5px dashed rgba(255,255,255,0.3);}
+
+  /* ── Static reference diagram ── */
+  .static-diagram-wrap{
+    background:var(--neck);padding:.9rem 1rem .8rem;
+    border-bottom:2px solid rgba(255,255,255,0.06);
+  }
+  .static-diagram-label{
+    font-family:'DM Mono',monospace;font-size:.54rem;letter-spacing:.12em;
+    text-transform:uppercase;color:rgba(255,255,255,0.5);
+    text-align:center;margin-bottom:.6rem;
+  }
+  .static-diagram{display:flex;gap:.3rem;justify-content:center;align-items:flex-start;}
+  .static-beat{display:flex;flex-direction:column;align-items:center;gap:.18rem;flex:1;max-width:80px;}
+  .static-beat-num{
+    font-family:'DM Mono',monospace;font-size:.54rem;font-weight:600;
+    color:rgba(255,255,255,0.55);margin-bottom:.06rem;
+  }
+  .static-beat-group{display:flex;gap:.12rem;}
+  .static-stroke{
+    width:26px;height:30px;border-radius:5px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'DM Mono',monospace;font-size:.82rem;font-weight:700;flex-shrink:0;
+    border:1.5px solid transparent;
+  }
+  .static-stroke.down{
+    background:var(--slot-down-bg);color:#ff7055;
+    border-color:var(--slot-down-border);
+  }
+  .static-stroke.up{
+    background:var(--slot-up-bg);color:#90bff0;
+    border-color:var(--slot-up-border);
+  }
+  .static-stroke.skip{
+    background:rgba(255,255,255,0.06);
+    color:rgba(255,255,255,0.25);
+    border:1.5px dashed rgba(255,255,255,0.18);
+  }
+  .static-divider{
+    width:1.5px;background:rgba(255,255,255,0.18);
+    align-self:stretch;margin:0 .1rem;border-radius:1px;
+  }
+  .group-bracket{display:flex;flex-direction:column;align-items:center;gap:.16rem;}
+  .bracket-label{
+    font-family:'DM Mono',monospace;font-size:.52rem;font-weight:500;
+    color:rgba(255,255,255,0.5);letter-spacing:.03em;text-align:center;
+  }
+  .bracket-strokes{display:flex;gap:.12rem;}
+
+  /* ── Animated beat grid ── */
+  .beat-grid-wrap{background:var(--neck);padding:.9rem 1rem .8rem;}
+  .beat-grid-label{
+    font-family:'DM Mono',monospace;font-size:.54rem;letter-spacing:.12em;
+    text-transform:uppercase;color:rgba(255,255,255,0.5);
+    text-align:center;margin-bottom:.6rem;
+  }
+  .beat-grid{display:flex;gap:.3rem;justify-content:center;}
+  .beat-cell{display:flex;flex-direction:column;align-items:center;gap:.2rem;flex:1;max-width:80px;}
+  .beat-number{
+    font-family:'DM Mono',monospace;font-size:.54rem;font-weight:600;
+    color:rgba(255,255,255,0.55);
+  }
+  .beat-strokes{display:flex;gap:.12rem;}
+
+  /* Base slot */
+  .stroke-slot{
+    width:26px;height:34px;border-radius:5px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:.88rem;font-weight:700;flex-shrink:0;
+    transition:all .1s;
+    background:var(--slot-empty-bg);
+    border:1.5px solid var(--slot-empty-border);
+    color:rgba(255,255,255,0.35);
+    user-select:none;
+  }
+  /* Preset slots — not editable, just display */
+  .stroke-slot.locked{ cursor:default; }
+  /* Custom slots — tappable */
+  .stroke-slot.editable{
+    cursor:pointer;
+    border-style:dashed;
+    border-color:rgba(255,255,255,0.28);
+  }
+  .stroke-slot.editable:active{ transform:scale(0.92); }
+  /* Down stroke */
+  .stroke-slot.down{
+    background:var(--slot-down-bg);
+    border:1.5px solid var(--slot-down-border);
+    color:#ff7055;
+    border-style:solid;
+  }
+  /* Up stroke */
+  .stroke-slot.up{
+    background:var(--slot-up-bg);
+    border:1.5px solid var(--slot-up-border);
+    color:#90bff0;
+    border-style:solid;
+  }
+  /* Active beat highlight */
+  .stroke-slot.active-beat{
+    box-shadow:0 0 0 2.5px var(--gold),0 0 16px rgba(232,160,32,0.5);
+    transform:scale(1.12);z-index:1;position:relative;
+  }
+
+  /* ── Legend ── */
+  .legend{
+    display:flex;gap:.75rem;justify-content:center;
+    padding:.5rem 1rem;background:var(--neck-dark);
+    font-family:'DM Mono',monospace;font-size:.58rem;
+    letter-spacing:.06em;text-transform:uppercase;
+    border-top:1px solid rgba(255,255,255,0.06);
+  }
+  .legend span{display:flex;align-items:center;gap:.3rem;color:rgba(255,255,255,0.5);}
+  .leg-dot{width:10px;height:10px;border-radius:2px;}
+  .leg-dot.down{background:#ff7055;}
+  .leg-dot.up{background:#90bff0;}
+  .leg-dot.off{background:rgba(255,255,255,0.15);border:1px dashed rgba(255,255,255,0.3);}
+
+  /* ── Beat indicator ── */
+  .beat-indicator{
+    display:flex;gap:.4rem;justify-content:center;
+    padding:.6rem 1rem;border-top:1.5px solid var(--cream-dark);
+  }
+  .beat-dot{
+    height:8px;border-radius:4px;background:var(--cream-dark);
+    transition:all .12s;flex:1;max-width:48px;
+  }
+  .beat-dot.active{background:var(--gold);box-shadow:0 0 8px rgba(232,160,32,0.5);}
+  .beat-dot.downbeat{background:var(--red);box-shadow:0 0 8px rgba(217,64,37,0.4);}
+
+  /* ── Controls ── */
+  .controls{padding:.9rem 1.1rem 1.1rem;}
+  .ctrl-row{display:flex;align-items:center;gap:.65rem;margin-bottom:.85rem;}
+  .ctrl-label{
+    font-family:'DM Mono',monospace;font-size:.57rem;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--text-light);flex-shrink:0;width:3rem;
+  }
+  .bpm-slider{
+    flex:1;-webkit-appearance:none;appearance:none;height:5px;
+    border-radius:3px;background:var(--cream-dark);outline:none;cursor:pointer;
+  }
+  .bpm-slider::-webkit-slider-thumb{
+    -webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--red);cursor:pointer;box-shadow:0 2px 6px rgba(217,64,37,0.4);
+  }
+  .bpm-value{
+    font-family:'DM Mono',monospace;font-size:.82rem;font-weight:500;
+    color:var(--text);width:4.2rem;text-align:right;flex-shrink:0;
+  }
+  .pill-btns{display:flex;gap:.3rem;}
+  .pill-btn{
+    flex:1;padding:.35rem .3rem;border-radius:6px;
+    border:1.5px solid var(--cream-dark);background:var(--cream);
+    font-family:'DM Mono',monospace;font-size:.64rem;font-weight:500;
+    color:var(--text-mid);cursor:pointer;transition:all .18s;
+    white-space:nowrap;text-align:center;
+  }
+  .pill-btn:hover{border-color:var(--blue);}
+  .pill-btn.active-feel{
+    border-color:var(--blue);background:rgba(27,79,138,0.09);
+    color:var(--blue);font-weight:600;
+  }
+
+  .play-row{display:flex;align-items:center;justify-content:center;margin-top:.2rem;}
+  .play-btn{
+    width:64px;height:64px;border-radius:50%;border:none;
+    background:var(--red);color:white;font-size:1.3rem;
+    cursor:pointer;transition:all .18s;
+    box-shadow:0 4px 18px rgba(217,64,37,0.38);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .play-btn.playing{background:var(--text);box-shadow:0 4px 16px rgba(42,32,24,0.25);}
+  .play-btn:active{transform:scale(0.93);}
+  .play-btn:disabled{
+    background:var(--cream-dark);color:var(--text-light);
+    box-shadow:none;cursor:not-allowed;
+  }
+
+  /* ── TAB READER ── */
+  .tab-reader-section{margin-bottom:1rem}
+  .tab-reader-header{display:flex;align-items:center;gap:.6rem;padding:.7rem .9rem;border-radius:10px;background:rgba(42,172,184,0.07);border:2px solid rgba(42,172,184,0.22);margin-bottom:.75rem}
+  .tab-reader-icon{font-size:1.2rem;flex-shrink:0}
+  .tab-reader-title{font-size:.88rem;font-weight:600;color:var(--text)}
+  .tab-reader-sub{font-size:.7rem;color:var(--text-light);margin-top:.1rem}
+  .tab-input{width:100%;min-height:90px;border-radius:10px;border:2px solid var(--cream-dark);background:var(--cream);color:var(--text);padding:.7rem .85rem;font-family:'DM Mono',monospace;font-size:.7rem;line-height:1.6;resize:vertical;outline:none;transition:border-color .18s}
+  .tab-input:focus{border-color:var(--teal)}
+  .tab-input::placeholder{color:var(--text-light)}
+  .tab-actions{display:flex;gap:.4rem;margin-top:.5rem;margin-bottom:.75rem}
+  .tab-btn{flex:1;padding:.5rem .4rem;border-radius:8px;border:2px solid var(--cream-dark);background:var(--cream);font-family:'DM Mono',monospace;font-size:.65rem;font-weight:500;color:var(--text-mid);cursor:pointer;transition:all .18s;text-align:center}
+  .tab-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .tab-btn.primary{background:var(--teal);border-color:var(--teal);color:white;font-weight:600}
+  .tab-notes-row{display:flex;gap:.5rem;margin-bottom:.6rem}
+  .tab-notes-box{flex:1;background:#0a0a0a;border-radius:8px;padding:.6rem .75rem;min-height:36px}
+  .tab-notes-label{font-family:'DM Mono',monospace;font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:.3rem}
+  .tab-notes-content{font-family:'DM Mono',monospace;font-size:.68rem;color:rgba(255,255,255,0.75);line-height:1.5;word-break:break-all}
+  .tab-stepper{display:flex;align-items:center;gap:.5rem;background:var(--cream);border:2px solid var(--cream-dark);border-radius:10px;padding:.6rem .85rem;margin-bottom:.5rem}
+  .tab-step-btn{width:34px;height:34px;border-radius:50%;border:2px solid var(--cream-dark);background:var(--white);font-size:1rem;cursor:pointer;transition:all .18s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .tab-step-btn:hover{border-color:var(--blue)}
+  .tab-step-btn:disabled{opacity:.35;cursor:not-allowed}
+  .tab-step-info{flex:1;text-align:center}
+  .tab-step-note{font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--text);display:block}
+  .tab-step-pos{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--text-light);letter-spacing:.06em;text-transform:uppercase}
+  .tab-auto-row{display:flex;gap:.5rem;margin-bottom:.5rem}
+  .tab-auto-btn{flex:1;padding:.5rem .6rem;border-radius:8px;border:2px solid var(--cream-dark);background:var(--cream);font-family:'DM Mono',monospace;font-size:.65rem;font-weight:500;color:var(--text-mid);cursor:pointer;transition:all .18s;text-align:center}
+  .tab-auto-btn.playing{background:var(--text);border-color:var(--text);color:white}
+  .tab-speed-row{display:flex;align-items:center;gap:.5rem}
+  .tab-speed-label{font-family:'DM Mono',monospace;font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-light);flex-shrink:0;width:3.5rem}
+  .tab-speed-slider{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:var(--cream-dark);outline:none;cursor:pointer}
+  .tab-speed-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--teal);cursor:pointer}
+  .tab-speed-val{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--text);width:3rem;text-align:right;flex-shrink:0}
+  .tab-fret-status{font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;text-align:center;padding:.35rem;min-height:1.3em;color:var(--text-light)}
+  .tab-divider{border:none;border-top:1.5px solid var(--cream-dark);margin:1rem 0 .75rem}
+
+  /* ── TRIAD SHAPES (Stage 7) ── */
+  .triad-section{ margin-bottom:1.2rem; }
+  .triad-group-head{
+    font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--text-light);
+    padding:.45rem 0 .4rem;margin-bottom:.5rem;display:block;
+    border-bottom:1.5px solid var(--cream-dark);
+  }
+  .triad-shape-row{ display:flex;gap:.6rem;margin-bottom:.85rem; }
+  .triad-shape-btn{
+    flex:1;border:1.5px solid var(--cream-dark);border-radius:12px;
+    background:var(--white);cursor:pointer;transition:all .18s;
+    padding:14px 8px 10px;text-align:center;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+  }
+  .triad-shape-btn:hover{ background:var(--cream); }
+  .triad-shape-btn.major{ border-color:rgba(232,160,32,0.5); }
+  .triad-shape-btn.major:hover{ border-color:var(--gold); }
+  .triad-shape-btn.minor{ border-color:rgba(27,79,138,0.35); }
+  .triad-shape-btn.minor:hover{ border-color:var(--blue); }
+  .triad-shape-btn.selected-major{ border-color:var(--gold);background:rgba(232,160,32,0.06); }
+  .triad-shape-btn.selected-minor{ border-color:var(--blue);background:rgba(27,79,138,0.06); }
+  .triad-shape-label{
+    font-family:'DM Mono',monospace;font-size:.6rem;font-weight:600;
+    letter-spacing:.06em;text-transform:uppercase;
+  }
+  .triad-shape-btn.major .triad-shape-label{ color:#BA7517; }
+  .triad-shape-btn.minor .triad-shape-label{ color:var(--blue); }
+
+  /* ── CHORD BUILDER (Stage 3) ── */
+  .cb-wrap{ width:100%; }
+
+  /* Note picker */
+  .cb-note-grid{
+    display:grid;grid-template-columns:repeat(6,1fr);gap:.35rem;
+    margin-bottom:.85rem;
+  }
+  .cb-note-btn{
+    padding:.5rem .2rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.72rem;font-weight:600;
+    color:var(--text-mid);cursor:pointer;transition:all .15s;text-align:center;
+    line-height:1.2;
+  }
+  .cb-note-btn:hover{ border-color:var(--blue);color:var(--blue); }
+  .cb-note-btn.selected{ border-color:var(--red);background:rgba(217,64,37,0.08);color:var(--red); }
+
+  /* Chord type selector */
+  .cb-type-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;
+    margin-bottom:.85rem;
+  }
+  .cb-type-btn{
+    padding:.45rem .2rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.62rem;font-weight:500;
+    color:var(--text-mid);cursor:pointer;transition:all .15s;text-align:center;
+  }
+  .cb-type-btn:hover{ border-color:var(--teal);color:var(--teal); }
+  .cb-type-btn.selected{ border-color:var(--teal);background:rgba(42,172,184,0.08);color:var(--teal);font-weight:600; }
+
+  /* Build button */
+  .cb-build-btn{
+    width:100%;padding:.7rem;border-radius:10px;border:none;
+    background:var(--red);color:white;
+    font-family:'DM Sans',sans-serif;font-size:.92rem;font-weight:600;
+    cursor:pointer;transition:all .18s;margin-bottom:1rem;
+    box-shadow:0 4px 14px rgba(217,64,37,0.28);
+  }
+  .cb-build-btn:hover{ filter:brightness(1.06); }
+  .cb-build-btn:disabled{ background:var(--cream-dark);color:var(--text-light);box-shadow:none;cursor:not-allowed; }
+
+  /* Steps display */
+  .cb-steps{ display:flex;flex-direction:column;gap:.6rem;margin-bottom:.85rem; }
+  .cb-step{
+    border-radius:12px;border:2px solid var(--cream-dark);
+    overflow:hidden;transition:border-color .2s;
+  }
+  .cb-step.active{ border-color:var(--gold); }
+  .cb-step.done{ border-color:var(--green); }
+  .cb-step-head{
+    display:flex;align-items:center;gap:.6rem;
+    padding:.6rem .85rem;background:var(--cream);
+    cursor:pointer;
+  }
+  .cb-step-num{
+    width:22px;height:22px;border-radius:50%;flex-shrink:0;
+    background:var(--cream-dark);
+    font-family:'DM Mono',monospace;font-size:.62rem;font-weight:600;
+    color:var(--text-mid);display:flex;align-items:center;justify-content:center;
+  }
+  .cb-step.active .cb-step-num{ background:var(--gold);color:white; }
+  .cb-step.done   .cb-step-num{ background:var(--green);color:white; }
+  .cb-step-title{
+    font-size:.84rem;font-weight:600;color:var(--text);flex:1;
+  }
+  .cb-step-subtitle{
+    font-family:'DM Mono',monospace;font-size:.6rem;color:var(--text-light);
+  }
+  .cb-step-body{ display:none;padding:.7rem .85rem .85rem; }
+  .cb-step.active .cb-step-body,
+  .cb-step.done   .cb-step-body{ display:block; }
+
+  /* Note pills inside steps */
+  .cb-pill-row{
+    display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem;
+  }
+  .cb-pill{
+    padding:.25rem .5rem;border-radius:5px;
+    font-family:'DM Mono',monospace;font-size:.68rem;font-weight:600;
+    border:1.5px solid var(--cream-dark);background:var(--cream);
+    color:var(--text-mid);transition:all .2s;
+  }
+  .cb-pill.active-note{ background:rgba(27,79,138,0.1);border-color:var(--blue);color:var(--blue); }
+  .cb-pill.root-note{   background:rgba(217,64,37,0.1);border-color:var(--red);color:var(--red); }
+  .cb-pill.third-note{  background:rgba(76,175,80,0.1);border-color:var(--green);color:var(--green); }
+  .cb-pill.fifth-note{  background:rgba(27,79,138,0.1);border-color:var(--blue);color:var(--blue); }
+  .cb-pill.seventh-note{background:rgba(232,160,32,0.1);border-color:var(--gold);color:var(--gold); }
+  .cb-pill.dim-note{    background:rgba(150,80,200,0.1);border-color:#9650c8;color:#9650c8; }
+  .cb-pill.faded{       opacity:.25; }
+
+  .cb-step-desc{
+    font-size:.8rem;color:var(--text-mid);line-height:1.5;margin-bottom:.5rem;
+  }
+  .cb-interval-row{
+    display:flex;align-items:center;gap:.2rem;flex-wrap:wrap;margin-bottom:.5rem;
+  }
+  .cb-interval{
+    padding:.2rem .4rem;border-radius:4px;
+    font-family:'DM Mono',monospace;font-size:.62rem;font-weight:600;
+  }
+  .cb-interval.W{ background:rgba(27,79,138,0.12);color:var(--blue); }
+  .cb-interval.H{ background:rgba(217,64,37,0.12);color:var(--red); }
+  .cb-interval.WH{ background:rgba(232,160,32,0.12);color:var(--gold); }
+  .cb-interval-arrow{ font-size:.55rem;color:var(--text-light); }
+
+  /* Step-back + ask Vizi row */
+  .cb-action-row{
+    display:flex;gap:.5rem;margin-top:.75rem;
+  }
+  .cb-back-btn{
+    flex:1;padding:.5rem .6rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--cream);
+    font-family:'DM Mono',monospace;font-size:.62rem;font-weight:500;
+    color:var(--text-mid);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .cb-back-btn:hover{ border-color:var(--blue);color:var(--blue); }
+  .cb-back-btn:disabled{ opacity:.4;cursor:not-allowed; }
+  .cb-vizi-btn{
+    flex:2;padding:.5rem .6rem;border-radius:8px;
+    border:1.5px solid var(--blue);background:rgba(27,79,138,0.06);
+    font-family:'DM Mono',monospace;font-size:.62rem;font-weight:600;
+    color:var(--blue);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .cb-vizi-btn:hover{ background:rgba(27,79,138,0.12); }
+
+  /* Fretboard status */
+  .cb-fret-status{
+    font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.06em;
+    text-transform:uppercase;text-align:center;
+    padding:.4rem;min-height:1.3em;color:var(--text-light);
+  }
+
+  /* Legend */
+  .cb-legend{
+    display:flex;flex-wrap:wrap;gap:.4rem .75rem;
+    margin-bottom:.5rem;
+  }
+  .cb-legend-item{
+    display:flex;align-items:center;gap:.3rem;
+    font-family:'DM Mono',monospace;font-size:.58rem;color:var(--text-light);
+  }
+  .cb-legend-dot{
+    width:9px;height:9px;border-radius:50%;flex-shrink:0;
+  }
+
+  /* ── OPEN CHORDS PANEL (Stage 4) ── */
+  .oc-tabs{
+    display:flex;gap:.35rem;margin-bottom:.85rem;
+  }
+  .oc-tab{
+    flex:1;padding:.45rem .3rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.72rem;font-weight:500;
+    color:var(--text-mid);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .oc-tab:hover{border-color:var(--blue);color:var(--blue);}
+  .oc-tab.active{border-color:var(--red);background:rgba(217,64,37,0.07);color:var(--red);font-weight:600;}
+
+  .oc-chord-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;
+    margin-bottom:.85rem;
+  }
+  .oc-chord-btn{
+    padding:.5rem .3rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.75rem;font-weight:600;
+    color:var(--text);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .oc-chord-btn:hover{border-color:var(--blue);background:rgba(27,79,138,0.05);}
+  .oc-chord-btn.selected{border-color:var(--gold);background:rgba(232,160,32,0.08);color:var(--text);}
+  .oc-chord-btn.barre{
+    color:var(--text-light);border-color:var(--cream-dark);
+    background:var(--cream);cursor:default;
+    position:relative;
+  }
+  .oc-chord-btn.barre::after{
+    content:'barre';
+    display:block;font-size:.48rem;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--text-light);
+    margin-top:.1rem;
+  }
+  .oc-chord-btn.barre:hover{border-color:var(--cream-dark);background:var(--cream);}
+
+  .oc-action-row{
+    display:none;flex-direction:column;gap:.5rem;margin-bottom:.75rem;
+  }
+  .oc-action-row.show{display:flex;}
+  .oc-selected-label{
+    font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--text-light);text-align:center;
+  }
+  .oc-selected-name{
+    font-family:'Playfair Display',serif;font-weight:700;
+    font-size:1.3rem;color:var(--text);text-align:center;margin-bottom:.25rem;
+  }
+  .oc-btn-row{display:flex;gap:.5rem;}
+  .oc-action-btn{
+    flex:1;padding:.65rem .5rem;border-radius:10px;
+    border:2px solid var(--cream-dark);background:var(--cream);
+    font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:600;
+    color:var(--text-mid);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .oc-action-btn.chord-btn-oc{
+    border-color:var(--gold);background:rgba(232,160,32,0.07);color:var(--text);
+  }
+  .oc-action-btn.chord-btn-oc:hover{background:rgba(232,160,32,0.14);}
+  .oc-action-btn.arpeggio-btn-oc{
+    border-color:var(--blue);background:rgba(27,79,138,0.07);color:var(--blue);
+  }
+  .oc-action-btn.arpeggio-btn-oc:hover{background:rgba(27,79,138,0.14);}
+  .oc-fret-status{
+    font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.06em;
+    text-transform:uppercase;text-align:center;
+    padding:.35rem;min-height:1.3em;color:var(--text-light);
+  }
+  .oc-barre-hint{
+    font-size:.75rem;color:var(--text-light);text-align:center;
+    padding:.4rem .6rem;background:var(--cream);border-radius:8px;
+    border:1.5px solid var(--cream-dark);margin-bottom:.5rem;
+    display:none;
+  }
+  .oc-barre-hint.show{display:block;}
+
+  /* ── CHORDS PANEL (Stage 4) ── */
+  .cp-section-head{
+    display:flex;align-items:center;gap:.6rem;
+    padding:.6rem .85rem;border-radius:10px;
+    background:linear-gradient(135deg,var(--cream),var(--cream-dark));
+    margin:.85rem 0 .6rem;border:1.5px solid var(--cream-mid);
+  }
+  .cp-section-icon{ font-size:1.1rem;flex-shrink:0; }
+  .cp-section-head span{
+    flex:1;font-family:'DM Sans',sans-serif;font-size:.88rem;
+    font-weight:600;color:var(--text);
+  }
+  .cp-section-toggle{
+    font-size:.58rem;padding:.25rem .55rem;border-radius:5px;
+    border:1px solid var(--cream-mid);background:var(--white);
+    color:var(--text-light);cursor:pointer;transition:all .15s;
+  }
+  .cp-section-toggle:hover{ border-color:var(--blue);color:var(--blue); }
+
+  /* Scale filter */
+  .cp-scale-filter{
+    display:none;background:rgba(42,172,184,0.05);
+    border:1.5px solid rgba(42,172,184,0.2);border-radius:10px;
+    padding:.7rem .85rem;margin-bottom:.85rem;
+  }
+  .cp-scale-filter.show{ display:block; }
+  .cp-scale-filter-label{
+    font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--teal);margin-bottom:.5rem;display:block;
+  }
+  .cp-scale-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem;
+    margin-bottom:.4rem;
+  }
+  .cp-scale-btn{
+    padding:.35rem .3rem;border-radius:6px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.62rem;font-weight:500;
+    color:var(--text-mid);cursor:pointer;transition:all .15s;text-align:center;
+  }
+  .cp-scale-btn:hover{ border-color:var(--teal);color:var(--teal); }
+  .cp-scale-btn.active{ border-color:var(--teal);background:rgba(42,172,184,0.08);color:var(--teal);font-weight:600; }
+  .cp-filter-hint{
+    font-size:.72rem;color:var(--text-light);margin-top:.35rem;
+  }
+
+  /* Chord type tabs */
+  .cp-tabs{
+    display:flex;gap:.3rem;margin-bottom:.6rem;flex-wrap:wrap;
+  }
+  .cp-tab{
+    padding:.38rem .65rem;border-radius:7px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.68rem;font-weight:500;
+    color:var(--text-mid);cursor:pointer;transition:all .15s;
+  }
+  .cp-tab:hover{ border-color:var(--blue);color:var(--blue); }
+  .cp-tab.active{ border-color:var(--red);background:rgba(217,64,37,0.07);color:var(--red);font-weight:600; }
+
+  /* Chord grid */
+  .cp-chord-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:.3rem;
+    margin-bottom:.6rem;
+  }
+  .cp-chord-btn{
+    padding:.5rem .25rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.72rem;font-weight:600;
+    color:var(--text);cursor:pointer;transition:all .15s;text-align:center;
+    position:relative;
+  }
+  .cp-chord-btn:hover{ border-color:var(--gold);background:rgba(232,160,32,0.06); }
+  .cp-chord-btn.in-scale{ border-color:rgba(42,172,184,0.5);background:rgba(42,172,184,0.05); }
+  .cp-chord-btn.in-progression{
+    border-color:var(--gold);background:rgba(232,160,32,0.1);
+  }
+  .cp-chord-btn.barre-chord{
+    color:var(--text-light);background:var(--cream);cursor:default;
+    border-style:dashed;
+  }
+  .cp-chord-btn.barre-chord:hover{ border-color:var(--blue);background:rgba(27,79,138,0.05);cursor:pointer; }
+  .cp-chord-btn .cp-badge{
+    position:absolute;top:-4px;right:-4px;
+    width:14px;height:14px;border-radius:50%;
+    background:var(--gold);color:white;
+    font-size:.48rem;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  /* Barre picker */
+  .cp-barre-wrap{ margin-bottom:.85rem; }
+  .cp-barre-shapes{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:.3rem;
+    margin-bottom:.5rem;
+  }
+  .cp-shape-btn{
+    padding:.45rem .3rem;border-radius:7px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.65rem;font-weight:600;
+    color:var(--text-mid);cursor:pointer;transition:all .15s;text-align:center;
+  }
+  .cp-shape-btn:hover{ border-color:var(--blue);color:var(--blue); }
+  .cp-shape-btn.active{ border-color:var(--blue);background:rgba(27,79,138,0.08);color:var(--blue); }
+  .cp-root-grid{
+    display:grid;grid-template-columns:repeat(6,1fr);gap:.3rem;
+    margin-bottom:.5rem;
+  }
+  .cp-root-btn{
+    padding:.4rem .2rem;border-radius:6px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.65rem;font-weight:600;
+    color:var(--text-mid);cursor:pointer;transition:all .15s;text-align:center;
+  }
+  .cp-root-btn:hover{ border-color:var(--red);color:var(--red); }
+  .cp-root-btn.active{ border-color:var(--red);background:rgba(217,64,37,0.08);color:var(--red); }
+
+  /* Triad picker — reuse existing triad SVG buttons, just smaller section head */
+
+  /* Chord action buttons */
+  .cp-chord-actions{
+    display:none;flex-direction:column;gap:.45rem;
+    background:var(--cream);border:1.5px solid var(--cream-dark);
+    border-radius:10px;padding:.7rem .85rem;margin-bottom:.85rem;
+  }
+  .cp-chord-actions.show{ display:flex; }
+  .cp-selected-chord{
+    font-family:'Playfair Display',serif;font-weight:700;
+    font-size:1.2rem;color:var(--text);text-align:center;
+  }
+  .cp-action-btns{ display:flex;gap:.4rem; }
+  .cp-action-btn{
+    flex:1;padding:.55rem .4rem;border-radius:8px;
+    border:2px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Sans',sans-serif;font-size:.8rem;font-weight:600;
+    color:var(--text-mid);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .cp-action-btn.send{ border-color:var(--gold);color:var(--text);background:rgba(232,160,32,0.07); }
+  .cp-action-btn.send:hover{ background:rgba(232,160,32,0.14); }
+  .cp-action-btn.prog{ border-color:var(--blue);color:var(--blue);background:rgba(27,79,138,0.05); }
+  .cp-action-btn.prog:hover{ background:rgba(27,79,138,0.12); }
+  .cp-action-btn.arp{ border-color:var(--green);color:var(--green);background:rgba(76,175,80,0.05); }
+  .cp-action-btn.arp:hover{ background:rgba(76,175,80,0.12); }
+
+  /* Progression builder */
+  .cp-prog-section{
+    border-top:2px solid var(--cream-dark);padding-top:.85rem;margin-top:.5rem;
+  }
+  .cp-prog-label{
+    font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--text-light);margin-bottom:.5rem;display:block;
+  }
+  .cp-prog-bar{
+    display:flex;flex-wrap:wrap;gap:.3rem;min-height:36px;
+    background:var(--cream);border:1.5px solid var(--cream-dark);
+    border-radius:8px;padding:.4rem .5rem;margin-bottom:.6rem;
+    align-items:center;
+  }
+  .cp-prog-empty{
+    font-family:'DM Mono',monospace;font-size:.62rem;
+    color:var(--text-light);font-style:italic;
+  }
+  .cp-prog-chord{
+    display:flex;align-items:center;gap:.25rem;
+    background:var(--white);border:1.5px solid var(--gold);
+    border-radius:6px;padding:.25rem .45rem;
+    font-family:'DM Mono',monospace;font-size:.72rem;font-weight:600;color:var(--text);
+  }
+  .cp-prog-chord .cp-prog-x{
+    color:var(--text-light);cursor:pointer;font-size:.65rem;
+    padding:0 .1rem;transition:color .15s;
+  }
+  .cp-prog-chord .cp-prog-x:hover{ color:var(--red); }
+  .cp-prog-arrow{
+    font-family:'DM Mono',monospace;font-size:.6rem;color:var(--text-light);
+  }
+  .cp-prog-controls{
+    display:flex;gap:.4rem;margin-bottom:.5rem;
+  }
+  .cp-prog-btn{
+    flex:1;padding:.5rem .3rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--cream);
+    font-family:'DM Sans',sans-serif;font-size:.8rem;font-weight:600;
+    color:var(--text-mid);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .cp-prog-btn.play{ border-color:var(--red);color:var(--red);background:rgba(217,64,37,0.06); }
+  .cp-prog-btn.play:hover{ background:rgba(217,64,37,0.12); }
+  .cp-prog-btn.vizi{ border-color:var(--blue);color:var(--blue);background:rgba(27,79,138,0.05); }
+  .cp-prog-btn.vizi:hover{ background:rgba(27,79,138,0.12); }
+  .cp-prog-btn.clear{ color:var(--text-light); }
+  .cp-prog-btn:disabled{ opacity:.4;cursor:not-allowed; }
+  .cp-loop-row{
+    display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem;
+  }
+  .cp-loop-label{
+    font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--text-light);flex:1;
+  }
+  .cp-loop-toggle{
+    width:36px;height:20px;border-radius:10px;
+    background:var(--cream-dark);cursor:pointer;
+    position:relative;transition:background .2s;border:none;
+    flex-shrink:0;
+  }
+  .cp-loop-toggle.on{ background:var(--green); }
+  .cp-loop-toggle::after{
+    content:'';position:absolute;
+    width:14px;height:14px;border-radius:50%;
+    background:white;top:3px;left:3px;
+    transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);
+  }
+  .cp-loop-toggle.on::after{ left:19px; }
+  .cp-prog-status{
+    font-family:'DM Mono',monospace;font-size:.6rem;
+    color:var(--text-light);text-align:center;
+    min-height:1.3em;padding:.25rem;
+  }
+
+
+  /* ── YOUTUBE VIDEO WINDOW ── */
+  .yt-video-wrap{
+    display:none;width:240px;margin:.5rem auto;
+    position:relative;animation:fade-up .2s ease both;
+  }
+  .yt-video-wrap.show{ display:block; }
+  .yt-video-box{
+    border-radius:10px;overflow:hidden;
+    background:#0a0a0a;box-shadow:0 6px 18px var(--shadow-lg);
+    position:relative;
+  }
+  .yt-video-box iframe{
+    width:100%;aspect-ratio:9/16;border:none;display:block;
+  }
+  .yt-close{
+    position:absolute;top:5px;right:5px;z-index:10;
+    width:22px;height:22px;border-radius:50%;
+    background:rgba(0,0,0,0.65);border:none;color:white;
+    font-size:.7rem;cursor:pointer;display:flex;
+    align-items:center;justify-content:center;transition:background .15s;
+  }
+  .yt-close:hover{ background:var(--red); }
+
+  /* ── BY CHORD VIEW ── */
+  .cp-view-toggle{
+    display:flex;gap:.3rem;margin-bottom:.85rem;
+    background:var(--cream);border-radius:10px;padding:.3rem;
+    border:1.5px solid var(--cream-dark);
+  }
+  .cp-view-btn{
+    flex:1;padding:.4rem .5rem;border-radius:7px;
+    border:none;background:none;
+    font-family:'DM Mono',monospace;font-size:.65rem;font-weight:500;
+    color:var(--text-light);cursor:pointer;transition:all .18s;text-align:center;
+  }
+  .cp-view-btn.active{
+    background:var(--white);color:var(--text);
+    box-shadow:0 1px 4px var(--shadow);font-weight:600;
+  }
+  .cp-chord-note-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;
+    margin-bottom:.85rem;
+  }
+  .cp-chord-note-btn{
+    padding:.5rem .25rem;border-radius:8px;
+    border:1.5px solid var(--cream-dark);background:var(--white);
+    font-family:'DM Mono',monospace;font-size:.78rem;font-weight:700;
+    color:var(--text);cursor:pointer;transition:all .15s;text-align:center;
+  }
+  .cp-chord-note-btn:hover{ border-color:var(--red);color:var(--red); }
+  .cp-chord-note-btn.active{ border-color:var(--red);background:rgba(217,64,37,0.07);color:var(--red); }
+  .cp-voicings-list{ display:flex;flex-direction:column;gap:.4rem;margin-bottom:.85rem; }
+  .cp-voicing-item{
+    display:flex;align-items:center;gap:.6rem;
+    background:var(--cream);border:1.5px solid var(--cream-dark);
+    border-radius:8px;padding:.55rem .75rem;cursor:pointer;
+    transition:all .18s;
+  }
+  .cp-voicing-item:hover{ border-color:var(--gold);background:rgba(232,160,32,0.05); }
+  .cp-voicing-tag{
+    font-family:'DM Mono',monospace;font-size:.6rem;font-weight:600;
+    letter-spacing:.06em;text-transform:uppercase;
+    padding:.2rem .45rem;border-radius:4px;
+    background:var(--cream-dark);color:var(--text-mid);flex-shrink:0;
+  }
+  .cp-voicing-tag.open{ background:rgba(76,175,80,0.12);color:var(--green); }
+  .cp-voicing-tag.barre{ background:rgba(27,79,138,0.12);color:var(--blue); }
+  .cp-voicing-tag.triad{ background:rgba(232,160,32,0.12);color:#BA7517; }
+  .cp-voicing-name{ font-size:.84rem;font-weight:500;color:var(--text);flex:1; }
+  .cp-voicing-arrow{ color:var(--text-light);font-size:.8rem; }
+
+  /* ── Section video intro button ── */
+  .cp-video-intro-btn{
+    display:flex;align-items:center;gap:.6rem;
+    padding:.65rem 1.2rem;border-radius:10px;
+    border:none;background:var(--vizi);
+    font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:600;
+    color:#fff;cursor:pointer;transition:all .18s;
+    margin-bottom:.75rem;box-shadow:0 3px 12px rgba(61,186,114,0.28);
+  }
+  .cp-video-intro-btn:hover{ background:var(--vizi-light);transform:translateY(-1px); }
+  .cp-video-intro-btn:disabled{ background:rgba(255,255,255,0.10);color:var(--text-dim);box-shadow:none;cursor:default; }
+  .cp-video-intro-btn .cp-vid-icon{ font-size:1rem; }
+
+  /* Metronome moved to shared floating widget — metronome-widget.js */
+
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <div class="logo-mark"><span class="A">A</span><span class="i">i</span></div>
+    <div class="logo-name">Visual Guitar</div>
+  </a>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+  </div>
+</nav>
+
+<!-- Stage intro YouTube video window -->
+<div class="yt-video-wrap" id="ytVideoWrap">
+  <div class="yt-video-box">
+    <button class="yt-close" id="ytClose" title="Close">✕</button>
+    <iframe id="ytIframe" src="" allow="autoplay; fullscreen" allowfullscreen></iframe>
+  </div>
+</div>
+
+<div class="panel-wrap">
+  <div class="cat-panel" id="catPanel">
+    <div class="cat-head">
+      <div>
+        <div class="cat-stage-tag" id="catStageTag">Stage 1</div>
+        <div class="cat-title" id="catTitle">Tuning &amp; Setup</div>
+        <div class="cat-desc" id="catDesc"></div>
+      </div>
+      <button class="cat-close" id="catClose">✕</button>
+    </div>
+    <div class="cat-body">
+      <div class="choice-row" id="choiceRow">
+        <button class="cp-video-intro-btn" id="introChoice">
+          <span class="cp-vid-icon">&#9654;</span>
+          <span id="introWatchedNote">Watch Intro Video</span>
+        </button>
+
+        <button class="choice-card" id="testFretboardChoice" style="display:none">
+          <span class="ci">&#9889;</span>
+          <div class="ct">Test Fretboard LEDs</div>
+          <div class="cs">Send TEST command — cycles all 84 LEDs through 5 colours</div>
+        </button>
+        <button class="choice-card tuner-card" id="tunerChoice" style="display:none">
+          <span class="ci">&#127925;</span>
+          <div class="ct">Open Tuner</div>
+          <div class="cs">Tune up before you start</div>
+        </button>
+      </div>
+
+      <div class="tuner-wrap" id="tunerWrap">
+        <div class="tuner-box">
+          <div class="tuner-status" id="tunerStatus">Tap "Start Listening" and play a string</div>
+          <div class="tuner-note" id="tunerNote">&#8212;</div>
+          <div class="tuner-freq" id="tunerFreq">&nbsp;</div>
+          <div class="tuner-gauge">
+            <div class="tuner-track"></div>
+            <div class="tuner-center-mark"></div>
+            <div class="tuner-needle" id="tunerNeedle" style="left:50%"></div>
+          </div>
+          <div class="tuner-strings" id="tunerStrings"></div>
+          <button class="tuner-mic-btn" id="tunerMicBtn">&#127908; Start Listening</button>
+        </div>
+      </div>
+
+      <div class="vid-wrap" id="vidWrap">
+        <video id="introVideo" controls playsinline></video>
+        <div class="vid-meta">
+          <span id="vidLabel">Intro video</span>
+          <button id="vidToExercises">Go to exercises &rarr;</button>
+        </div>
+      </div>
+
+      <div class="tip-card" id="tipCard">
+        <span class="tip-icon">&#128161;</span>
+        <div>
+          <span class="tip-label">Tip</span>
+          <span class="tip-text" id="tipText"></span>
+        </div>
+      </div>
+
+      <div class="ex-list" id="exList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const STAGES = [
+    {
+      id:'tuning', num:1, label:'Tuning & Setup',
+      desc:'Get your guitar in tune and learn how to hold it comfortably before anything else.',
+      videoUrl:'', // add YouTube link when ready — stage tuning autoTuner:true,
+      tips:[
+        "Hold the neck with your thumb low and behind it — not wrapped over the top.",
+        "Rest the guitar waist on your right leg and tilt the neck slightly upward — not flat across your lap.",
+        "Keep your fretting wrist low and relaxed, away from the neck, so your fingers can curl naturally.",
+        "Your strumming elbow should rest lightly on the top edge of the body — not gripping.",
+        "Relax your shoulders before you play — tension travels straight to your hands.",
+        "Tune from below the note upward — it holds pitch better than tuning down to the note.",
+        "New strings stretch a lot the first day — retune every few minutes until they settle.",
+        "Your thumb behind the neck should sit roughly behind your middle finger, not sticking out.",
+        "Keep your fretting fingertips curved like you are holding a small ball.",
+        "A guitar that drifts out of tune mid-session is normal — retune every 10 to 15 minutes."
+      ],
+      exercises:[]
+    },
+    {
+      id:'warmup', num:2, label:'Warmup with Scales',
+      desc:'Learn where notes live on the neck before grouping them into chords. A great way to start every session.',
+      videoUrl:'', // add YouTube link when ready — stage warmup
+      tips:[
+        "Scales are just notes arranged in a pattern — every chord you know is built from scale notes.",
+        "The root note is always the starting point of a scale — it gives the scale its name.",
+        "The 3rd decides whether a scale (and chord built from it) sounds major or minor.",
+        "The 5th is the most stable note — landing on it always sounds resolved.",
+        "Whole steps skip a fret, half steps move one fret — that pattern is what makes a scale sound the way it does.",
+        "Major scales follow W W H W W W H — two whole steps, a half, three whole, a half.",
+        "The minor pentatonic uses only 5 notes — it is easier to stay in key and great for soloing.",
+        "Play scales slowly and evenly before building speed — your fingers learn the pattern, not the pace.",
+        "Going up and down the scale is a warmup, but trying to make melodies from it is how you really learn it.",
+        "Every scale you learn here will help you understand chords, solos, and songs in every other stage."
+      ],
+      exercises:[]
+    },
+    {
+      id:'chords', num:4, label:'Chords',
+      desc:'Open chords, barre chords, and triads — explore any chord, build progressions, and filter by scale.',
+      videoUrl:'',       // main stage intro — open chords + chord builder
+      barreVideoUrl:'',  // barre chords section intro
+      triadVideoUrl:'',  // triads section intro
+      tips:[
+        "Press only as hard as needed to stop the buzz — squeezing harder just tires your hand.",
+        "Curl your fretting fingers like you're holding a small ball, not flat across the strings.",
+        "Practice forming one chord, releasing fully, and reforming it — that's the real skill.",
+        "It's normal for fingertips to hurt the first 1-2 weeks. Calluses build fast after that.",
+        "Strum slowly and listen for any muted or buzzing string — that tells you which finger to fix.",
+        "G and C share a finger position — learning them together speeds up both.",
+        "Barre chords take real hand strength — short daily practice beats one long session.",
+        "Roll your barre finger slightly onto its side — flat-on-the-fret rarely works well.",
+        "Triads are 3-note mini-chords — lighter on the hand and great for rhythm playing.",
+        "Building a chord progression and looping it is one of the fastest ways to improve transitions."
+      ],
+      exercises:[]
+    },
+    {
+      id:'chord-theory', num:3, label:'How Chords Are Built',
+      desc:'Learn what root, third, and fifth mean — the three notes behind every chord you play.',
+      videoUrl:'', // add YouTube link when ready — stage chord_theory theoryMode:true,
+      tips:[
+        "The root note is what gives a chord its name — a C chord starts on the note C.",
+        "Major and minor are decided entirely by the third — everything else can stay the same.",
+        "The fifth is the most stable note in a chord — it rarely sounds wrong.",
+        "Moving a third down just one fret turns a major chord minor.",
+        "Once you can hear a third, you can often tell major from minor with your eyes closed.",
+        "A power chord (root + fifth, no third) is neither major nor minor — that's why it works in both.",
+        "Every major scale note can serve as a root, third, or fifth depending on the chord built from it.",
+        "Try humming just the root, then the third, then the fifth of a chord you know — that's ear training for free.",
+        "The same three-note idea applies whether you're playing an open chord or a barre chord.",
+        "Understanding root/third/fifth means you can often figure out a new chord without ever looking it up."
+      ],
+      exercises:[]
+    },
+    {
+      id:'strumming', num:5, label:'Strumming Patterns',
+      desc:"Combine the timing and chords you've built into real strumming patterns.",
+      videoUrl:'', // add YouTube link when ready — stage strumming
+      tips:[
+        "Keep your strumming arm moving down-up-down-up constantly, even over silent beats.",
+        "A relaxed wrist makes a better strum than a tense, forced one.",
+        "Down-down-up-up-down-up is one of the most useful patterns to learn first.",
+        "Muting strings with your fretting hand briefly creates the chunk sound in many patterns.",
+        "Strum near the sound hole for warmth, near the bridge for a brighter, twangier tone.",
+        "Your pick (or thumb) should brush the strings, not dig into them.",
+        "Practice strumming patterns on muted strings first to isolate the rhythm.",
+        "Accent the downbeat slightly louder — it gives the pattern a sense of pulse.",
+        "Most strumming problems are really chord-transition problems in disguise.",
+        "Once a pattern feels automatic, try it at a slightly faster tempo to build flexibility."
+      ],
+      exercises:[]
+    },
+    {
+      id:'soloing', num:6, label:'Soloing & Scales',
+      desc:'Warm up with scales and start playing single-note lines and simple solos.',
+      videoUrl:'', // add YouTube link when ready — stage soloing
+      tips:[
+        "Practice scales slowly with a metronome before chasing speed.",
+        "Alternate picking (down-up-down-up) builds speed more reliably than all downstrokes.",
+        "The pentatonic scale is the fastest path to sounding musical while improvising.",
+        "Bend strings gradually and check pitch against a fretted note for accuracy.",
+        "Vibrato is a small, controlled wobble — not a fast shake.",
+        "Improvising over just one or two chords is the easiest way to start soloing.",
+        "Your fretting hand should stay relaxed even during fast scale runs.",
+        "Listening to solos you admire and humming them first builds your musical ear.",
+        "Mistakes during improvisation are normal — recovering smoothly matters more than avoiding them.",
+        "Short daily scale practice beats occasional long sessions for finger speed."
+      ],
+      exercises:[]
+    },
+    {
+      id:'song', num:7,  label:'Play a Song',
+      desc:'Put everything together — upload a song sheet and Vizi will walk you through every chord on your fretboard.',
+      videoUrl:'', // add YouTube link when ready — stage song
+      tips:[
+        "Pick a song with chords you already know — your first full song should feel achievable, not like a stretch.",
+        "Learn the chord changes slowly before worrying about strumming pattern or tempo.",
+        "Use the metronome at half the song's real tempo until the changes feel automatic.",
+        "It's normal for the first song to take days or even weeks — that's not slow, that's learning.",
+        "Focus on smooth transitions first; a clean slow version always sounds better than a rushed sloppy one.",
+        "If a section keeps tripping you up, isolate just that two-chord change and drill it separately.",
+        "Singing along — even just humming — helps your hands know where they are in the song.",
+        "Record yourself once you can play through it. You'll hear things you can't notice while playing.",
+        "Once one song feels solid, the next one always comes faster — the first is the hardest.",
+        "Every professional guitarist started by learning one song all the way through. This is that moment."
+      ],
+      exercises:[
+        'Upload a song sheet and ask Vizi to introduce it',
+        'Identify all the chords in the song',
+        'Practice each chord change in the song at 60 BPM',
+        'Play through the full song with the metronome'
+      ],
+      isSong:true
+    }
+  ];
+
+  // ── Choice panels ──────────────────────────────────────────
+  const CHOICE_PANELS = {
+    'warmup': {
+      label:'Choose a scale type to warm up with',
+      hint:'Vizi will light up the scale on your fretboard. The All Scales reference shows the interval pattern for each type.',
+      cols:2,
+      choices:[
+        { icon:'&#128522;', name:'Major Scales',           desc:'W W H W W W H — bright, happy sound' },
+        { icon:'&#128546;', name:'Minor Scales',           desc:'W H W W H W W — darker, more serious feel' },
+        { icon:'&#11088;',  name:'Major Pentatonic',       desc:'5 notes — smooth and musical instantly' },
+        { icon:'&#127928;', name:'Minor Pentatonic',       desc:'5 notes — the most-used scale in rock and blues' },
+        { icon:'&#128216;', name:'All Scales — Reference', desc:'See the interval pattern and note labels for every scale type — no Vizi needed' },
+      ]
+    },
+    'open-chords': {
+      label:'What type of chord would you like to practice?',
+      hint:'Vizi will suggest exercises and light up examples on your fretboard.',
+      cols:2,
+      choices:[
+        { icon:'&#128522;', name:'Major', desc:'Happy, bright sound — G, C, D, A, E' },
+        { icon:'&#128546;', name:'Minor', desc:'Sad, darker feel — Am, Em, Dm, Bm' },
+        { icon:'&#127927;', name:'7th',   desc:'Bluesy tension — G7, C7, D7, A7' },
+        { icon:'&#10024;',  name:'6th',   desc:'Sweet, jazz-flavored — A6, C6, G6' },
+        { icon:'&#127754;', name:'Sus',   desc:'Suspended, open sound — Csus2, Gsus4' },
+        { icon:'&#11015;',  name:'Dim',   desc:'Tense, dramatic — Bdim, F#dim' },
+        { icon:'&#127928;', name:'Slash', desc:'Bass note chords — G/B, C/E, D/F#' },
+      ]
+    },
+    'chord-theory': {
+      label:'What would you like to explore?',
+      hint:'Vizi will explain the concept and give you random chord examples to work with.',
+      cols:2,
+      choices:[
+        { icon:'&#127959;', name:'Construct a Chord',         desc:'How a chord is built from scratch — Vizi picks a random chord and walks you through it' },
+        { icon:'1&#65039;&#8419;', name:'Identify 1, 3, 5 — Major', desc:'Vizi names a major chord, you find the root, third, and fifth' },
+        { icon:'&#127917;', name:'Identify 1, 3, 5 — Minor', desc:'Same exercise with minor chords — spot the lowered third' },
+        { icon:'&#127927;', name:'Identify 1, 3, 5 — 7th',   desc:'Find all four notes of a 7th chord' },
+        { icon:'&#10024;',  name:'Identify 1, 3, 5 — 6th',   desc:'Find the added sixth and understand what it does' },
+        { icon:'&#128256;', name:'Mixed — Random Chord Type', desc:'Vizi picks any chord type at random — keeps you on your toes' },
+      ]
+    },
+    'transitions': {
+      label:'How many chords in your progression?',
+      hint:'Vizi will suggest a common progression and guide you through the changes.',
+      cols:2,
+      choices:[
+        { icon:'2&#65039;&#8419;', name:'2-Chord Progression', desc:'The simplest starting point — perfect for building a smooth change' },
+        { icon:'3&#65039;&#8419;', name:'3-Chord Progression', desc:'Most songs only need three — this covers a huge range of music' },
+        { icon:'4&#65039;&#8419;', name:'4-Chord Progression', desc:'The classic pop and rock format — I, IV, V, vi and its variations' },
+        { icon:'5&#65039;&#8419;', name:'5-Chord Progression', desc:'More complex sequences for when 4 feels too simple' },
+      ]
+    },
+    'arpeggios': {
+      label:'Which chord type would you like to arpeggiate?',
+      hint:'Vizi will light up the notes one at a time and guide you through the pattern.',
+      cols:2,
+      choices:[
+        { icon:'&#128522;', name:'Major Arpeggio',  desc:'Root, major third, fifth' },
+        { icon:'&#128546;', name:'Minor Arpeggio',  desc:'Root, minor third, fifth' },
+        { icon:'&#127927;', name:'7th Arpeggio',    desc:'Root, third, fifth, seventh' },
+        { icon:'&#127754;', name:'Pentatonic',      desc:'5-note pattern across strings' },
+      ]
+    },
+    'strumming': {
+      label:'Which string group would you like to practice strumming?',
+      hint:'Each chord type uses different strings. Vizi will show you which chords fit and give you a strumming exercise.',
+      cols:2,
+      choices:[
+        { icon:'&#127928;', name:'6 Strings',             desc:'Full chord — all strings from Low E' },
+        { icon:'&#127925;', name:'5 Strings',             desc:'A-root chords — A string to High E' },
+        { icon:'&#127926;', name:'4 Strings',             desc:'D-root chords — D string to High E' },
+        { icon:'&#128256;', name:'Mixed — Change Groups', desc:'Switch between 6, 5, and 4-string chords mid-song' },
+      ]
+    },
+    'barre-triads': {
+      label:'Choose a barre chord shape or triad string group',
+      hint:'Barre chords are moveable — learn one shape and you have it in all 12 keys. Triads are 3-note mini-chords on any string group.',
+      cols:2,
+      barre: true,
+      choices:[
+        { icon:'&#128308;', name:'E Shape', desc:'Root on Low E — the most common barre shape' },
+        { icon:'&#128309;', name:'A Shape', desc:'Root on A string — compact, great for rhythm' },
+        { icon:'&#128994;', name:'C Shape', desc:'Root on B string — open and ringing feel' },
+        { icon:'&#128993;', name:'G Shape', desc:'Root on Low E — wide, full 6-string voicing' },
+        { icon:'&#128995;', name:'D Shape', desc:'Root on B string — top 4 strings only' },
+      ],
+      triadGroups: [
+        {
+          strings:'Root on High E', stringDesc:'G · B · e strings', cmd:'triads-hie', group:'high',
+          major:{ label:'Major', shape:[ {str:'G',role:'third', row:2}, {str:'B',role:'fifth', row:1}, {str:'e',role:'root',  row:1} ] },
+          minor:{ label:'Minor', shape:[ {str:'G',role:'third', row:1}, {str:'B',role:'fifth', row:1}, {str:'e',role:'root',  row:1} ] }
+        },
+        {
+          strings:'Root on B', stringDesc:'G · B · e strings', cmd:'triads-b', group:'high',
+          major:{ label:'Major', shape:[ {str:'G',role:'fifth', row:1}, {str:'B',role:'root',  row:2}, {str:'e',role:'third', row:1} ] },
+          minor:{ label:'Minor', shape:[ {str:'G',role:'fifth', row:2}, {str:'B',role:'root',  row:3}, {str:'e',role:'third', row:1} ] }
+        },
+        {
+          strings:'Root on G', stringDesc:'G · B · e strings', cmd:'triads-g', group:'high',
+          major:{ label:'Major', shape:[ {str:'G',role:'root',  row:3}, {str:'B',role:'third', row:3}, {str:'e',role:'fifth', row:1} ] },
+          minor:{ label:'Minor', shape:[ {str:'G',role:'root',  row:3}, {str:'B',role:'third', row:2}, {str:'e',role:'fifth', row:1} ] }
+        },
+        {
+          strings:'Root on D', stringDesc:'D · A · Low E strings', cmd:'triads-d', group:'low',
+          major:{ label:'Major', shape:[ {str:'D',role:'root',  row:1}, {str:'A',role:'fifth', row:1}, {str:'LoE',role:'third', row:3} ] },
+          minor:{ label:'Minor', shape:[ {str:'D',role:'root',  row:1}, {str:'A',role:'fifth', row:1}, {str:'LoE',role:'third', row:2} ] }
+        },
+        {
+          strings:'Root on A', stringDesc:'D · A · Low E strings', cmd:'triads-a', group:'low',
+          major:{ label:'Major', shape:[ {str:'D',role:'third', row:1}, {str:'A',role:'root',  row:2}, {str:'LoE',role:'fifth', row:2} ] },
+          minor:{ label:'Minor', shape:[ {str:'D',role:'third', row:1}, {str:'A',role:'root',  row:3}, {str:'LoE',role:'fifth', row:3} ] }
+        },
+        {
+          strings:'Root on Low E', stringDesc:'D · A · Low E strings', cmd:'triads-le', group:'low',
+          major:{ label:'Major', shape:[ {str:'D',role:'fifth', row:1}, {str:'A',role:'third', row:3}, {str:'LoE',role:'root',  row:4} ] },
+          minor:{ label:'Minor', shape:[ {str:'D',role:'fifth', row:1}, {str:'A',role:'third', row:3}, {str:'LoE',role:'root',  row:4} ] }
+        },
+      ]
+    },
+    'soloing': {
+      label:'Step 1 — Find a backing track',
+      hint:'Open the backing tracks in a new window, pick one you like, note the key shown in the track title, then choose the matching key and scale below.',
+      cols:1,
+      bandcamp:'https://backing-tracks.bandcamp.com/album/easy-backing-tracks',
+      groups:[
+        { key:'E Minor', desc:'Em C G D — most common beginner key', choices:[
+          { name:'E Minor — Major Scale',        desc:'Full melodic sound' },
+          { name:'E Minor — E Minor Pentatonic', desc:'5 notes — easiest to sound good fast' },
+        ]},
+        { key:'A Minor', desc:'Am G F E — soulful and expressive', choices:[
+          { name:'A Minor — Major Scale',        desc:'Full melodic sound' },
+          { name:'A Minor — A Minor Pentatonic', desc:'Classic blues-rock feel' },
+        ]},
+        { key:'G Major', desc:'G D Em C — huge in pop and rock', choices:[
+          { name:'G Major — Major Scale',        desc:'Bright, full sound' },
+          { name:'G Major — E Minor Pentatonic', desc:'Most popular solo scale in rock' },
+        ]},
+        { key:'D Major', desc:'D G Bm A — great for country and folk', choices:[
+          { name:'D Major — Major Scale',        desc:'Bright and melodic' },
+          { name:'D Major — B Minor Pentatonic', desc:'Warm blues feel over D major' },
+        ]},
+        { key:'C Major', desc:'C G Am F — the most common chord set', choices:[
+          { name:'C Major — Major Scale',        desc:'Full, classical sound' },
+          { name:'C Major — A Minor Pentatonic', desc:'Versatile — works over almost anything' },
+        ]},
+      ]
+    }
+  };
+
+  // ── Scale reference data ───────────────────────────────────
+  const SCALE_KEYS = {
+    'Major Scales':[
+      { key:'C Major', notes:[{n:'C',l:'Root'},{n:'D',l:'2nd'},{n:'E',l:'3rd'},{n:'F',l:'4th'},{n:'G',l:'5th'},{n:'A',l:'6th'},{n:'B',l:'7th'}] },
+      { key:'G Major', notes:[{n:'G',l:'Root'},{n:'A',l:'2nd'},{n:'B',l:'3rd'},{n:'C',l:'4th'},{n:'D',l:'5th'},{n:'E',l:'6th'},{n:'F#',l:'7th'}] },
+      { key:'D Major', notes:[{n:'D',l:'Root'},{n:'E',l:'2nd'},{n:'F#',l:'3rd'},{n:'G',l:'4th'},{n:'A',l:'5th'},{n:'B',l:'6th'},{n:'C#',l:'7th'}] },
+      { key:'A Major', notes:[{n:'A',l:'Root'},{n:'B',l:'2nd'},{n:'C#',l:'3rd'},{n:'D',l:'4th'},{n:'E',l:'5th'},{n:'F#',l:'6th'},{n:'G#',l:'7th'}] },
+      { key:'E Major', notes:[{n:'E',l:'Root'},{n:'F#',l:'2nd'},{n:'G#',l:'3rd'},{n:'A',l:'4th'},{n:'B',l:'5th'},{n:'C#',l:'6th'},{n:'D#',l:'7th'}] },
+      { key:'F Major', notes:[{n:'F',l:'Root'},{n:'G',l:'2nd'},{n:'A',l:'3rd'},{n:'Bb',l:'4th'},{n:'C',l:'5th'},{n:'D',l:'6th'},{n:'E',l:'7th'}] },
+    ],
+    'Minor Scales':[
+      { key:'A Minor', notes:[{n:'A',l:'Root'},{n:'B',l:'2nd'},{n:'C',l:'3rd'},{n:'D',l:'4th'},{n:'E',l:'5th'},{n:'F',l:'6th'},{n:'G',l:'7th'}] },
+      { key:'E Minor', notes:[{n:'E',l:'Root'},{n:'F#',l:'2nd'},{n:'G',l:'3rd'},{n:'A',l:'4th'},{n:'B',l:'5th'},{n:'C',l:'6th'},{n:'D',l:'7th'}] },
+      { key:'D Minor', notes:[{n:'D',l:'Root'},{n:'E',l:'2nd'},{n:'F',l:'3rd'},{n:'G',l:'4th'},{n:'A',l:'5th'},{n:'Bb',l:'6th'},{n:'C',l:'7th'}] },
+      { key:'B Minor', notes:[{n:'B',l:'Root'},{n:'C#',l:'2nd'},{n:'D',l:'3rd'},{n:'E',l:'4th'},{n:'F#',l:'5th'},{n:'G',l:'6th'},{n:'A',l:'7th'}] },
+      { key:'G Minor', notes:[{n:'G',l:'Root'},{n:'A',l:'2nd'},{n:'Bb',l:'3rd'},{n:'C',l:'4th'},{n:'D',l:'5th'},{n:'Eb',l:'6th'},{n:'F',l:'7th'}] },
+    ],
+    'Major Pentatonic':[
+      { key:'C Major Pent', notes:[{n:'C',l:'Root'},{n:'D',l:'2nd'},{n:'E',l:'3rd'},{n:'G',l:'5th'},{n:'A',l:'6th'}] },
+      { key:'G Major Pent', notes:[{n:'G',l:'Root'},{n:'A',l:'2nd'},{n:'B',l:'3rd'},{n:'D',l:'5th'},{n:'E',l:'6th'}] },
+      { key:'D Major Pent', notes:[{n:'D',l:'Root'},{n:'E',l:'2nd'},{n:'F#',l:'3rd'},{n:'A',l:'5th'},{n:'B',l:'6th'}] },
+      { key:'A Major Pent', notes:[{n:'A',l:'Root'},{n:'B',l:'2nd'},{n:'C#',l:'3rd'},{n:'E',l:'5th'},{n:'F#',l:'6th'}] },
+      { key:'E Major Pent', notes:[{n:'E',l:'Root'},{n:'F#',l:'2nd'},{n:'G#',l:'3rd'},{n:'B',l:'5th'},{n:'C#',l:'6th'}] },
+    ],
+    'Minor Pentatonic':[
+      { key:'A Minor Pent', notes:[{n:'A',l:'Root'},{n:'C',l:'3rd'},{n:'D',l:'4th'},{n:'E',l:'5th'},{n:'G',l:'7th'}] },
+      { key:'E Minor Pent', notes:[{n:'E',l:'Root'},{n:'G',l:'3rd'},{n:'A',l:'4th'},{n:'B',l:'5th'},{n:'D',l:'7th'}] },
+      { key:'D Minor Pent', notes:[{n:'D',l:'Root'},{n:'F',l:'3rd'},{n:'G',l:'4th'},{n:'A',l:'5th'},{n:'C',l:'7th'}] },
+      { key:'B Minor Pent', notes:[{n:'B',l:'Root'},{n:'D',l:'3rd'},{n:'E',l:'4th'},{n:'F#',l:'5th'},{n:'A',l:'7th'}] },
+      { key:'G Minor Pent', notes:[{n:'G',l:'Root'},{n:'Bb',l:'3rd'},{n:'C',l:'4th'},{n:'D',l:'5th'},{n:'F',l:'7th'}] },
+    ]
+  };
+
+  const SCALE_PATTERNS = {
+    'Major Scales':    { steps:['W','W','H','W','W','W','H'], desc:'Major scale — bright, resolved sound' },
+    'Minor Scales':    { steps:['W','H','W','W','H','W','W'], desc:'Natural minor — darker, more emotional' },
+    'Major Pentatonic':{ steps:['W','W','1.5','W','1.5'],    desc:'Major pentatonic — 5 notes, smooth and melodic' },
+    'Minor Pentatonic':{ steps:['1.5','W','W','1.5','W'],    desc:'Minor pentatonic — 5 notes, blues and rock staple' },
+  };
+
+  const ALL_SCALES_REF = [
+    { name:'Major Scale', pattern:['W','W','H','W','W','W','H'],
+      notes:[{n:'1',l:'Root',cls:'root'},{n:'2',l:'2nd',cls:''},{n:'3',l:'3rd',cls:'third'},{n:'4',l:'4th',cls:''},{n:'5',l:'5th',cls:'fifth'},{n:'6',l:'6th',cls:''},{n:'7',l:'7th',cls:'seventh'}] },
+    { name:'Natural Minor Scale', pattern:['W','H','W','W','H','W','W'],
+      notes:[{n:'1',l:'Root',cls:'root'},{n:'2',l:'2nd',cls:''},{n:'b3',l:'3rd',cls:'third'},{n:'4',l:'4th',cls:''},{n:'5',l:'5th',cls:'fifth'},{n:'b6',l:'6th',cls:''},{n:'b7',l:'7th',cls:'seventh'}] },
+    { name:'Major Pentatonic', pattern:['W','W','1.5','W','1.5'],
+      notes:[{n:'1',l:'Root',cls:'root'},{n:'2',l:'2nd',cls:''},{n:'3',l:'3rd',cls:'third'},{n:'5',l:'5th',cls:'fifth'},{n:'6',l:'6th',cls:''}] },
+    { name:'Minor Pentatonic', pattern:['1.5','W','W','1.5','W'],
+      notes:[{n:'1',l:'Root',cls:'root'},{n:'b3',l:'3rd',cls:'third'},{n:'4',l:'4th',cls:''},{n:'5',l:'5th',cls:'fifth'},{n:'b7',l:'7th',cls:'seventh'}] },
+    { name:'Blues Scale', pattern:['1.5','W','H','H','1.5','W'],
+      notes:[{n:'1',l:'Root',cls:'root'},{n:'b3',l:'3rd',cls:'third'},{n:'4',l:'4th',cls:''},{n:'b5',l:'Blue',cls:''},{n:'5',l:'5th',cls:'fifth'},{n:'b7',l:'7th',cls:'seventh'}] },
+  ];
+
+  // ── Progress ───────────────────────────────────────────────
+  function getProgress(){ try{ return JSON.parse(localStorage.getItem('viziProgress')||'{}'); }catch(e){ return {}; } }
+  function setProgress(p){ try{ localStorage.setItem('viziProgress',JSON.stringify(p)); }catch(e){} }
+  function markIntroWatched(id){ const p=getProgress(); p[id]=p[id]||{}; p[id].introWatched=(p[id].introWatched||0)+1; p[id].lastSeen=Date.now(); setProgress(p); }
+
+  // ── Panel state ────────────────────────────────────────────
+  let activeStage = null;
+  const catPanel       = document.getElementById('catPanel');
+  const catStageTag    = document.getElementById('catStageTag');
+  const catTitle       = document.getElementById('catTitle');
+  const catDesc        = document.getElementById('catDesc');
+  const introChoice    = document.getElementById('introChoice');
+  // exerciseChoice removed — Jump to Exercises feature removed
+  const introWatchedNote = document.getElementById('introWatchedNote');
+  const vidWrap        = document.getElementById('vidWrap');
+  const introVideo     = document.getElementById('introVideo');
+  const vidToExercises = document.getElementById('vidToExercises');
+  const tipCard        = document.getElementById('tipCard');
+  const tipText        = document.getElementById('tipText');
+  const exList         = document.getElementById('exList');
+  const tunerChoice    = document.getElementById('tunerChoice');
+  const tunerWrap      = document.getElementById('tunerWrap');
+
+  function openStage(id){
+    const stage = STAGES.find(s => s.id === id);
+    if (!stage) return;
+    if (stage.isSong){ window.location.href = 'songs.html'; return; }
+    activeStage = stage;
+
+    // Tuning stage: auto-open tuner, show tip
+    if (stage.autoTuner){
+      catStageTag.textContent = 'Stage ' + stage.num;
+      catTitle.textContent = stage.label;
+      catDesc.textContent = stage.desc;
+      vidWrap.classList.remove('show');
+      tunerWrap.classList.add('show');
+      exList.innerHTML = '';
+      catPanel.classList.add('show');
+      catPanel.scrollIntoView({behavior:'smooth',block:'start'});
+      showRandomTip();
+      return;
+    }
+
+    catStageTag.textContent = 'Stage ' + stage.num
+      + (stage.theoryMode ? '  —  Fretboard shows root / third / fifth' : '');
+    catTitle.textContent = stage.label;
+    catDesc.textContent  = stage.desc;
+
+    const p = getProgress();
+    const watched = (p[id] && p[id].introWatched) || 0;
+    if(document.getElementById('introWatchedNote')){
+      document.getElementById('introWatchedNote').textContent = watched > 0
+        ? 'Watched ' + watched + 'x — watch again'
+        : 'Watch Intro Video';
+    }
+    if(introChoice) introChoice.classList.toggle('cp-video-intro-watched', watched > 0);
+
+    vidWrap.classList.remove('show');
+    tipCard.classList.remove('show');
+    tunerWrap.classList.remove('show');
+    introVideo.pause();
+    stopTuner();
+
+    tunerChoice.style.display = (id === 'tuning') ? '' : 'none';
+
+    renderExercises(stage);
+    catPanel.classList.add('show');
+    catPanel.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  // YouTube video window elements
+  const ytWrap   = document.getElementById('ytVideoWrap');
+  const ytIframe = document.getElementById('ytIframe');
+  const ytClose  = document.getElementById('ytClose');
+
+  function openStageVideo(url){
+    if(!ytIframe||!ytWrap||!url) return;
+    // Convert watch/shorts URL to embed
+    const embedUrl = url
+      .replace('youtube.com/shorts/','youtube.com/embed/')
+      .replace('youtube.com/watch?v=','youtube.com/embed/')
+      + (url.includes('?')?'&':'?') + 'rel=0&modestbranding=1&autoplay=1';
+    ytIframe.src = embedUrl;
+    ytWrap.classList.add('show');
+    ytWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  function closeStageVideo(){
+    if(ytIframe) ytIframe.src='';
+    if(ytWrap) ytWrap.classList.remove('show');
+  }
+  if(ytClose){ ytClose.addEventListener('click', closeStageVideo); }
+
+  introChoice.addEventListener('click', () => {
+    if (!activeStage) return;
+    if(activeStage.videoUrl){
+      openStageVideo(activeStage.videoUrl);
+    }
+    tipCard.classList.remove('show');
+    tunerWrap.classList.remove('show'); stopTuner();
+    markIntroWatched(activeStage.id);
+  });
+
+  tunerChoice.addEventListener('click', () => {
+    vidWrap.classList.remove('show');
+    tipCard.classList.remove('show');
+    introVideo.pause();
+    tunerWrap.classList.add('show');
+    tunerWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+
+  document.getElementById('testFretboardChoice').addEventListener('click', async () => {
+    const btn = document.getElementById('testFretboardChoice');
+    const cs = btn.querySelector('.cs');
+    const orig = cs.textContent;
+    cs.textContent = 'Sending TEST command...';
+    btn.style.borderColor = 'var(--gold)';
+    try {
+      const res = await fetch(RAILWAY_URL+'/fretboard-command',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({command:'TEST'})
+      });
+      if(res.ok){
+        cs.textContent = 'TEST sent — watch your fretboard light up!';
+        btn.style.borderColor = 'var(--green)';
+      } else {
+        cs.textContent = 'Could not reach fretboard — check connection';
+        btn.style.borderColor = 'var(--red)';
+      }
+    } catch(e) {
+      cs.textContent = 'Could not reach fretboard — check connection';
+      btn.style.borderColor = 'var(--red)';
+    }
+    setTimeout(()=>{ cs.textContent=orig; btn.style.borderColor=''; }, 4000);
+  });
+  if(document.getElementById('vidToExercises')){
+    document.getElementById('vidToExercises').addEventListener('click', () => {
+      vidWrap.classList.remove('show'); introVideo.pause(); showRandomTip();
+    });
+  }
+
+  function showRandomTip(){
+    if (!activeStage || !activeStage.tips || !activeStage.tips.length) return;
+    tipText.textContent = activeStage.tips[Math.floor(Math.random()*activeStage.tips.length)];
+    tipCard.classList.add('show');
+  }
+
+  // ── Choice panel rendering ─────────────────────────────────
+
+  // ── Barre + Triad panel (Stage 7) ───────────────────────────
+  function renderBarreTriadsPanel(def){
+    exList.innerHTML='';
+
+    // ── Barre chords section ──
+    const bl=document.createElement('span'); bl.className='choice-panel-label';
+    bl.textContent='Barre Chord Shapes — moveable, works in any key';
+    exList.appendChild(bl);
+    exList.appendChild(makeVideoIntroBtn('Watch Barre Chord Intro', activeStage&&activeStage.barreVideoUrl||''));
+    const bh=document.createElement('div'); bh.className='choice-hint';
+    bh.textContent=def.hint; exList.appendChild(bh);
+    const bg=document.createElement('div'); bg.className='choice-grid cols-2';
+    def.choices.forEach(ch=>{
+      const btn=document.createElement('button'); btn.className='choice-btn';
+      btn.innerHTML='<span class="cb-icon">'+ch.icon+'</span><span><span class="cb-name">'+ch.name+'</span><span class="cb-desc">'+ch.desc+'</span></span><span class="cb-arrow">&#8594;</span>';
+      btn.addEventListener('click',()=>{
+        const p=new URLSearchParams({stage:'barre-triads',exercise:ch.name});
+        window.location.href='vizi.html?'+p.toString();
+      });
+      bg.appendChild(btn);
+    });
+    exList.appendChild(bg);
+
+    // ── Triads section ──
+    const hr=document.createElement('hr');
+    hr.style.cssText='border:none;border-top:1.5px solid var(--cream-dark);margin:1rem 0 .75rem';
+    exList.appendChild(hr);
+    const tl=document.createElement('span'); tl.className='choice-panel-label';
+    tl.textContent='Triad Shapes — by string group';
+    exList.appendChild(tl);
+    const th=document.createElement('div'); th.className='choice-hint';
+    th.textContent='Each string group has a Major shape and a Minor shape. Tap either to light it on the fretboard and send it to Vizi.';
+    exList.appendChild(th);
+
+    // High strings header
+    const highHead=document.createElement('div');
+    highHead.style.cssText='font-family:"DM Mono",monospace;font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-light);padding:.3rem 0 .4rem;margin-top:.2rem;border-bottom:1px solid var(--cream-dark);margin-bottom:.5rem;';
+    highHead.textContent='High Strings — e · B · G';
+    exList.appendChild(highHead);
+
+    def.triadGroups.filter(g=>g.group==='high').forEach(grp=>{
+      const sec=document.createElement('div'); sec.className='triad-section';
+      const lbl=document.createElement('span'); lbl.className='triad-group-head';
+      lbl.textContent=grp.strings;
+      sec.appendChild(lbl);
+
+      const row=document.createElement('div'); row.className='triad-shape-row';
+      ['major','minor'].forEach(type=>{
+        const shapeData=grp[type];
+        const btn=document.createElement('button');
+        btn.className='triad-shape-btn '+type;
+        const diagram=buildMiniTriadDiagram(shapeData.shape, type);
+        const label=document.createElement('span'); label.className='triad-shape-label';
+        label.textContent=shapeData.label;
+        btn.appendChild(diagram); btn.appendChild(label);
+        btn.addEventListener('click',()=>{
+          document.querySelectorAll('.triad-shape-btn').forEach(b=>{
+            b.classList.remove('selected-major','selected-minor');
+          });
+          btn.classList.add(type==='major'?'selected-major':'selected-minor');
+          // Navigate to Vizi with triad context
+          const exercise=grp.strings+' — '+(type==='major'?'Major':'Minor');
+          const p=new URLSearchParams({stage:'barre-triads',exercise:exercise});
+          window.location.href='vizi.html?'+p.toString();
+        });
+        row.appendChild(btn);
+      });
+      sec.appendChild(row);
+      exList.appendChild(sec);
+    });
+
+    // Low strings header
+    const lowHead=document.createElement('div');
+    lowHead.style.cssText='font-family:"DM Mono",monospace;font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-light);padding:.3rem 0 .4rem;margin-top:.85rem;border-bottom:1px solid var(--cream-dark);margin-bottom:.5rem;';
+    lowHead.textContent='Low Strings — D · A · Low E';
+    exList.appendChild(lowHead);
+
+    def.triadGroups.filter(g=>g.group==='low').forEach(grp=>{
+      const sec=document.createElement('div'); sec.className='triad-section';
+      const lbl=document.createElement('span'); lbl.className='triad-group-head'; lbl.textContent=grp.strings;
+      sec.appendChild(lbl);
+      const row=document.createElement('div'); row.className='triad-shape-row';
+      ['major','minor'].forEach(type=>{
+        const shape=grp[type];
+        const btn=document.createElement('button');
+        btn.className='triad-shape-btn '+type;
+        const diagram=buildMiniTriadDiagram(shape.shape, type);
+        const label=document.createElement('span'); label.className='triad-shape-label'; label.textContent=shape.label;
+        btn.appendChild(diagram); btn.appendChild(label);
+        btn.addEventListener('click',()=>{
+          document.querySelectorAll('.triad-shape-btn').forEach(b=>b.classList.remove('selected-major','selected-minor'));
+          btn.classList.add(type==='major'?'selected-major':'selected-minor');
+          const grpUp=grp.cmd.replace('triads-','').toUpperCase();
+          const p=new URLSearchParams({stage:'barre-triads',exercise:grp.strings+' — '+(type==='major'?'Major':'Minor')});
+          window.location.href='vizi.html?'+p.toString();
+        });
+        row.appendChild(btn);
+      });
+      sec.appendChild(row); exList.appendChild(sec);
+    });
+
+    const viziLink=document.createElement('div');
+    viziLink.style.cssText='text-align:center;margin-top:.5rem;';
+    viziLink.innerHTML='<a href="vizi.html" style="font-family:DM Mono,monospace;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);text-decoration:none">Ask Vizi for guidance →</a>';
+    exList.appendChild(viziLink);
+  }
+
+  function buildMiniTriadDiagram(shape, type){
+    // shape: array of {str, role, row} for G, B, e strings
+    // Standard chord diagram: E A D on left (faded), G B e on right (active)
+    // Columns: E=x10, A=x24, D=x38, G=x52, B=x66, e=x80
+    // Fret rows: nut=y6, fret1-center=y13, fret2=y28, fret3=y44, fret4=y60
+    const roleColor = { root: type==='major'?'#BA7517':'#185FA5', third:'#444', fifth:'#444' };
+    const roleLabel = { root:'R', third: type==='major'?'Δ3':'♭3', fifth:'p5' };
+    // High strings: G=left, B=mid, e=right
+    // Low strings: D=left, A=mid, LoE=right (same x positions)
+    const colX = { G:52, B:66, e:80, D:52, A:66, LoE:80 };
+    const rowY = { 1:13, 2:28, 3:44, 4:60 };
+
+    const ns='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('width','88'); svg.setAttribute('height','88');
+    svg.setAttribute('viewBox','0 0 88 88');
+
+    function line(x1,y1,x2,y2,stroke,w,op){
+      const l=document.createElementNS(ns,'line');
+      l.setAttribute('x1',x1);l.setAttribute('y1',y1);
+      l.setAttribute('x2',x2);l.setAttribute('y2',y2);
+      l.setAttribute('stroke',stroke);l.setAttribute('stroke-width',w||1);
+      if(op) l.setAttribute('opacity',op);
+      return l;
+    }
+    function txt(x,y,label,size,fill){
+      const t=document.createElementNS(ns,'text');
+      t.setAttribute('x',x);t.setAttribute('y',y);
+      t.setAttribute('text-anchor','middle');
+      t.setAttribute('font-size',size||8);
+      t.setAttribute('font-weight','600');
+      t.setAttribute('fill',fill||'white');
+      t.textContent=label;
+      return t;
+    }
+    function circle(cx,cy,r,fill){
+      const c=document.createElementNS(ns,'circle');
+      c.setAttribute('cx',cx);c.setAttribute('cy',cy);c.setAttribute('r',r||8);
+      c.setAttribute('fill',fill);
+      return c;
+    }
+
+    // Nut
+    svg.appendChild(line(4,6,84,6,'#2A2018',3));
+    // Fret lines
+    [20,36,52,68].forEach(y=>svg.appendChild(line(4,y,84,y,'rgba(42,32,24,0.15)')));
+    // Low strings E A D — faded
+    [10,24,38].forEach(x=>svg.appendChild(line(x,6,x,72,'rgba(42,32,24,0.2)',1)));
+    // Active strings G B e
+    [52,66,80].forEach(x=>svg.appendChild(line(x,6,x,72,'rgba(42,32,24,0.45)',1)));
+
+    // Dots
+    shape.forEach(dot=>{
+      const cx=colX[dot.str], cy=rowY[dot.row];
+      const fill=roleColor[dot.role];
+      const label=roleLabel[dot.role];
+      svg.appendChild(circle(cx,cy,8,fill));
+      const t=document.createElementNS(ns,'text');
+      t.setAttribute('x',cx);t.setAttribute('y',cy+4);
+      t.setAttribute('text-anchor','middle');
+      t.setAttribute('font-size','7');
+      t.setAttribute('font-weight','600');
+      t.setAttribute('fill','white');
+      t.textContent=label;
+      svg.appendChild(t);
+    });
+
+    // String labels — adapt for high vs low string group
+    const isLowGroup = shape.some(d=>d.str==='D'||d.str==='A'||d.str==='LoE');
+    const strLabels = isLowGroup
+      ? [['E',10,'muted'],['A_hi',24,'muted'],['G',38,'muted'],['D',52,'active'],['A',66,'active'],['E (low)',80,'active']]
+      : [['E',10,'muted'],['A',24,'muted'],['D',38,'muted'],['G',52,'active'],['B',66,'active'],['e',80,'active']];
+    strLabels.forEach(([lbl,x,cls],i)=>{
+      const t=document.createElementNS(ns,'text');
+      t.setAttribute('x',x);t.setAttribute('y',83);
+      t.setAttribute('text-anchor','middle');
+      t.setAttribute('font-size',i<3?'7':'8');
+      t.setAttribute('fill',i<3?'rgba(42,32,24,0.3)':'rgba(42,32,24,0.65)');
+      t.setAttribute('font-weight','400');
+      t.textContent = lbl==='A_hi'?'A':lbl==='E (low)'?'E':lbl;
+      svg.appendChild(t);
+    });
+
+    return svg;
+  }
+
+  async function sendFretboardCmd(cmd){
+    try{
+      await fetch(RAILWAY_URL+'/fretboard-command',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({command:cmd})
+      });
+    }catch(e){}
+  }
+
+
+  // ── CHORD BUILDER (Stage 3) ─────────────────────────────────
+  const CHROMATIC = ['C','C#/Db','D','D#/Eb','E','F','F#/Gb','G','G#/Ab','A','A#/Bb','B'];
+  const CHROM12   = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+  const CHORD_TYPES = {
+    'Major':      { intervals:[2,2,1,2,2,2,1], formula:'W W H W W W H', degrees:[0,2,4], labels:['Root','Major 3rd','5th'],         pillClass:['root-note','third-note','fifth-note'],    desc:'Major scale → take Root, 3rd, 5th' },
+    'Minor':      { intervals:[2,1,2,2,1,2,2], formula:'W H W W H W W', degrees:[0,2,4], labels:['Root','Minor 3rd','5th'],         pillClass:['root-note','third-note','fifth-note'],    desc:'Minor scale → take Root, 3rd, 5th' },
+    'Major 7th':  { intervals:[2,2,1,2,2,2,1], formula:'W W H W W W H', degrees:[0,2,4,6], labels:['Root','3rd','5th','Major 7th'], pillClass:['root-note','third-note','fifth-note','seventh-note'], desc:'Major scale → take Root, 3rd, 5th, 7th' },
+    'Minor 7th':  { intervals:[2,1,2,2,1,2,2], formula:'W H W W H W W', degrees:[0,2,4,6], labels:['Root','♭3rd','5th','Minor 7th'],pillClass:['root-note','third-note','fifth-note','seventh-note'], desc:'Minor scale → take Root, 3rd, 5th, 7th' },
+    'Dom 7th':    { intervals:[2,2,1,2,2,2,1], formula:'W W H W W W H', degrees:[0,2,4,5], labels:['Root','3rd','5th','♭7th'],      pillClass:['root-note','third-note','fifth-note','seventh-note'], desc:'Major scale → take Root, 3rd, 5th, ♭7th' },
+    'Diminished': { intervals:[2,1,2,1,2,1,2,1], formula:'W H W H W H W H', degrees:[0,2,4,6], labels:['Root','♭3rd','♭5th','♭♭7th'],pillClass:['root-note','third-note','dim-note','seventh-note'], desc:'Diminished scale → Root, ♭3rd, ♭5th, dim7th' },
+    'Sus2':       { intervals:[2,2,1,2,2,2,1], formula:'W W H W W W H', degrees:[0,1,4], labels:['Root','2nd','5th'],               pillClass:['root-note','third-note','fifth-note'],    desc:'Major scale → replace 3rd with 2nd' },
+    'Sus4':       { intervals:[2,2,1,2,2,2,1], formula:'W W H W W W H', degrees:[0,3,4], labels:['Root','4th','5th'],               pillClass:['root-note','third-note','fifth-note'],    desc:'Major scale → replace 3rd with 4th' },
+  };
+
+  // Common open chord voicings for fretboard lighting
+  const OPEN_CHORDS = {
+    'C Major':'CHORD C','D Major':'CHORD D','E Major':'CHORD E',
+    'F Major':'CHORD F','G Major':'CHORD G','A Major':'CHORD A',
+    'B Major':'CHORD B',
+    'A Minor':'CHORD Am','B Minor':'CHORD Bm','D Minor':'CHORD Dm',
+    'E Minor':'CHORD Em','G Minor':'CHORD Gm',
+    'A Major 7th':'CHORD Amaj7','C Major 7th':'CHORD Cmaj7','D Major 7th':'CHORD Dmaj7',
+    'E Major 7th':'CHORD Emaj7','G Major 7th':'CHORD Gmaj7',
+    'A Minor 7th':'CHORD Am7','D Minor 7th':'CHORD Dm7','E Minor 7th':'CHORD Em7',
+    'G Dom 7th':'CHORD G7','C Dom 7th':'CHORD C7','D Dom 7th':'CHORD D7',
+    'B Diminished':'CHORD Bdim',
+  };
+
+  let cbRoot = null, cbType = null, cbStep = 0;
+  let cbScaleNotes = [], cbChordNotes = [];
+
+  function buildScaleFromRoot(root, intervals){
+    const rootIdx = CHROM12.indexOf(root.replace('C#/Db','C#').replace('D#/Eb','D#').replace('F#/Gb','F#').replace('G#/Ab','G#').replace('A#/Bb','A#'));
+    const scale = [CHROM12[rootIdx]];
+    let pos = rootIdx;
+    for(let i=0;i<intervals.length-1;i++){
+      pos = (pos + intervals[i]) % 12;
+      scale.push(CHROM12[pos]);
+    }
+    return scale;
+  }
+
+  function renderChordBuilder(){
+    exList.innerHTML = '';
+    const wrap = document.createElement('div'); wrap.className='cb-wrap';
+
+    // ── Root note picker ──
+    const rootLabel = document.createElement('span'); rootLabel.className='choice-panel-label';
+    rootLabel.textContent='Step 1 — Choose a root note';
+    wrap.appendChild(rootLabel);
+    const noteGrid = document.createElement('div'); noteGrid.className='cb-note-grid';
+    CHROMATIC.forEach(note => {
+      const btn = document.createElement('button'); btn.className='cb-note-btn';
+      btn.innerHTML = note.replace('/','/');
+      if(cbRoot && CHROM12[CHROMATIC.indexOf(note)]===cbRoot) btn.classList.add('selected');
+      btn.addEventListener('click',()=>{
+        cbRoot = CHROM12[CHROMATIC.indexOf(note)];
+        document.querySelectorAll('.cb-note-btn').forEach(b=>b.classList.remove('selected'));
+        btn.classList.add('selected');
+        cbStep=0; updateBuildBtn();
+        clearSteps();
+      });
+      noteGrid.appendChild(btn);
+    });
+    wrap.appendChild(noteGrid);
+
+    // ── Chord type picker ──
+    const typeLabel = document.createElement('span'); typeLabel.className='choice-panel-label';
+    typeLabel.style.marginTop='.25rem'; typeLabel.style.display='block';
+    typeLabel.textContent='Step 2 — Choose a chord type';
+    wrap.appendChild(typeLabel);
+    const typeGrid = document.createElement('div'); typeGrid.className='cb-type-grid';
+    Object.keys(CHORD_TYPES).forEach(type => {
+      const btn = document.createElement('button'); btn.className='cb-type-btn';
+      btn.textContent = type;
+      if(cbType===type) btn.classList.add('selected');
+      btn.addEventListener('click',()=>{
+        cbType = type;
+        document.querySelectorAll('.cb-type-btn').forEach(b=>b.classList.remove('selected'));
+        btn.classList.add('selected');
+        cbStep=0; updateBuildBtn();
+        clearSteps();
+      });
+      typeGrid.appendChild(btn);
+    });
+    wrap.appendChild(typeGrid);
+
+    // ── Build button ──
+    const buildBtn = document.createElement('button');
+    buildBtn.className='cb-build-btn'; buildBtn.id='cbBuildBtn';
+    buildBtn.textContent='Build It →';
+    buildBtn.disabled = !(cbRoot && cbType);
+    buildBtn.addEventListener('click', ()=>runChordBuilder());
+    wrap.appendChild(buildBtn);
+
+    // ── Steps container ──
+    const steps = document.createElement('div'); steps.className='cb-steps'; steps.id='cbSteps';
+    wrap.appendChild(steps);
+
+    // ── Action row ──
+    const actionRow = document.createElement('div'); actionRow.className='cb-action-row';
+    const backBtn = document.createElement('button');
+    backBtn.className='cb-back-btn'; backBtn.id='cbBackBtn'; backBtn.textContent='← Step Back';
+    backBtn.disabled=true;
+    backBtn.addEventListener('click',()=>stepBack());
+    const viziBtn = document.createElement('button');
+    viziBtn.className='cb-vizi-btn'; viziBtn.id='cbViziBtn';
+    viziBtn.textContent='Ask Vizi to explain →';
+    viziBtn.addEventListener('click',()=>{
+      if(!cbRoot||!cbType) return;
+      const exercise = cbRoot+' '+cbType+' — Chord Construction';
+      const p=new URLSearchParams({stage:'chord-theory',exercise});
+      window.location.href='vizi.html?'+p.toString();
+    });
+    actionRow.appendChild(backBtn); actionRow.appendChild(viziBtn);
+    wrap.appendChild(actionRow);
+
+    // Fretboard status
+    const fretStatus = document.createElement('div');
+    fretStatus.className='cb-fret-status'; fretStatus.id='cbFretStatus';
+    wrap.appendChild(fretStatus);
+
+    exList.appendChild(wrap);
+
+    // Restore state if previously built
+    if(cbRoot && cbType && cbStep>0) runChordBuilderFromStep(0);
+  }
+
+  function updateBuildBtn(){
+    const btn = document.getElementById('cbBuildBtn');
+    if(btn) btn.disabled = !(cbRoot && cbType);
+  }
+
+  function clearSteps(){
+    const s = document.getElementById('cbSteps');
+    if(s) s.innerHTML='';
+    const b = document.getElementById('cbBackBtn');
+    if(b) b.disabled=true;
+  }
+
+  async function runChordBuilder(){ await runChordBuilderFromStep(0); }
+
+  async function runChordBuilderFromStep(fromStep){
+    if(!cbRoot||!cbType) return;
+    const def = CHORD_TYPES[cbType];
+    clearSteps();
+    cbStep = fromStep;
+
+    // Build scale
+    cbScaleNotes = buildScaleFromRoot(cbRoot, def.intervals);
+    // Build chord notes (pick degrees from scale)
+    cbChordNotes = def.degrees.map(d => cbScaleNotes[d] || cbScaleNotes[d%cbScaleNotes.length]);
+
+    const stepsEl = document.getElementById('cbSteps');
+
+    // ── STEP 1: All 12 notes ──
+    if(fromStep <= 0){
+      await animateStep(stepsEl, 1, 'All Possible Notes',
+        'These are all 12 notes in Western music. Every chord, scale, and melody is built from these.',
+        ()=> renderAllNotes('all'),
+        0
+      );
+    }
+
+    // ── STEP 2: The scale ──
+    if(fromStep <= 1){
+      await animateStep(stepsEl, 2, cbRoot+' '+cbType.split(' ')[0]+' Scale',
+        buildScaleDesc(cbRoot, cbType, def, cbScaleNotes),
+        ()=> renderAllNotes('scale'),
+        fromStep===1 ? 0 : 600
+      );
+    }
+
+    // ── STEP 3: The chord tones ──
+    if(fromStep <= 2){
+      await animateStep(stepsEl, 3, cbRoot+' '+cbType+' Chord',
+        buildChordDesc(cbRoot, cbType, def, cbChordNotes),
+        ()=> renderAllNotes('chord'),
+        fromStep===2 ? 0 : 600
+      );
+      // Light fretboard
+      await lightChordOnFretboard();
+    }
+
+    cbStep = 3;
+    const backBtn = document.getElementById('cbBackBtn');
+    if(backBtn) backBtn.disabled = false;
+  }
+
+  function stepBack(){
+    if(cbStep <= 1) return;
+    cbStep--;
+    runChordBuilderFromStep(cbStep-1);
+  }
+
+  function animateStep(container, num, title, desc, contentFn, delay){
+    return new Promise(resolve=>{
+      setTimeout(()=>{
+        // Mark previous steps done
+        container.querySelectorAll('.cb-step').forEach(s=>{ s.classList.remove('active'); s.classList.add('done'); });
+        const step = document.createElement('div'); step.className='cb-step active';
+        const head = document.createElement('div'); head.className='cb-step-head';
+        const numEl = document.createElement('div'); numEl.className='cb-step-num'; numEl.textContent=num;
+        const titleEl = document.createElement('div'); titleEl.className='cb-step-title'; titleEl.textContent=title;
+        head.appendChild(numEl); head.appendChild(titleEl);
+        const body = document.createElement('div'); body.className='cb-step-body';
+        const descEl = document.createElement('div'); descEl.className='cb-step-desc'; descEl.textContent=desc;
+        body.appendChild(descEl);
+        const pillRow = document.createElement('div'); pillRow.className='cb-pill-row';
+        body.appendChild(pillRow);
+        step.appendChild(head); step.appendChild(body);
+        container.appendChild(step);
+        head.addEventListener('click',()=>{ step.classList.toggle('done'); step.classList.toggle('active'); });
+        contentFn();
+        // Populate pill row — pass step number so pills show correct state
+        const info = getPillInfo(num);
+        info.forEach(p=>{
+          const pill=document.createElement('span'); pill.className='cb-pill '+p.cls;
+          pill.textContent=p.note; pillRow.appendChild(pill);
+        });
+        resolve();
+      }, delay);
+    });
+  }
+
+  function getPillInfo(forStep){
+    // forStep: 1=all notes, 2=scale, 3=chord tones
+    const def = CHORD_TYPES[cbType];
+    if(forStep===1 || !cbRoot){
+      // All 12 notes, all equal
+      return CHROM12.map(n=>({note:n, cls:'active-note'}));
+    }
+    if(forStep===2){
+      // Scale notes highlighted, non-scale faded, root in red
+      return CHROM12.map(n=>({
+        note:n,
+        cls: cbScaleNotes.includes(n)
+          ? (n===cbRoot ? 'root-note' : 'active-note')
+          : 'faded'
+      }));
+    }
+    // Step 3 — chord tones from scale, others faded
+    // Show all scale notes, highlight only chord tones
+    return cbScaleNotes.map((n,i)=>({
+      note:n,
+      cls: cbChordNotes.includes(n)
+        ? (i===0 ? 'root-note'
+          : i===def.degrees[1] ? 'third-note'
+          : i===def.degrees[2] ? 'fifth-note'
+          : 'seventh-note')
+        : 'faded'
+    }));
+  }
+
+  // Note state tracker for current display
+  let cbDisplayState = 'all';
+  function renderAllNotes(state){ cbDisplayState = state; }
+
+  function buildScaleDesc(root, type, def, scale){
+    const typeName = type.split(' ')[0];
+    return 'Starting from ' + root + ' (the Root), applying the '
+      + typeName + ' formula (' + def.formula + ') gives us: '
+      + scale.join(' – ') + '.  These ' + scale.length + ' notes form the '
+      + root + ' ' + typeName + ' scale — now we pick the chord tones from it.';
+  }
+
+  function buildChordDesc(root, type, def, chordNotes){
+    const noteStr = chordNotes.join(', ');
+    const degStr = def.labels.join(' + ');
+    // Use "Root" not "1st" throughout
+    const cleanDesc = def.desc.replace('1st','Root');
+    return cleanDesc + '.  '
+      + root + ' ' + type + ' = ' + noteStr
+      + '  (' + degStr + ').  '
+      + 'Combine any of these notes on the guitar and you have a ' + root + ' ' + type + ' chord.';
+  }
+
+  async function lightChordOnFretboard(){
+    const statusEl = document.getElementById('cbFretStatus');
+    const key = cbRoot + ' ' + cbType;
+    const cmd = OPEN_CHORDS[key];
+    if(!cmd){
+      if(statusEl){ statusEl.textContent='No open voicing — ask Vizi to show it on the fretboard'; statusEl.style.color='var(--text-light)'; }
+      return;
+    }
+    if(statusEl){ statusEl.textContent='Lighting fretboard...'; statusEl.style.color='var(--gold)'; }
+    try{
+      const res = await fetch(RAILWAY_URL+'/fretboard-command',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({command:cmd})
+      });
+      if(res.ok){
+        if(statusEl){ statusEl.textContent='Fretboard lit — open '+cbRoot+' '+cbType+' shape'; statusEl.style.color='var(--green)'; }
+      } else {
+        if(statusEl){ statusEl.textContent='Could not reach fretboard'; statusEl.style.color='var(--red)'; }
+      }
+    }catch(e){
+      if(statusEl){ statusEl.textContent='Could not reach fretboard'; statusEl.style.color='var(--red)'; }
+    }
+  }
+
+
+  // ── OPEN CHORDS PANEL (Stage 4) ─────────────────────────────
+  const OC_CHORDS = {
+    'Major': [['A','open'],['A#/Bb','barre'],['B','barre'],['C','open'],['C#/Db','barre'],['D','open'],['D#/Eb','barre'],['E','open'],['F','barre'],['F#/Gb','barre'],['G','open'],['G#/Ab','barre']],
+    'Minor': [['Am','open'],['A#m/Bbm','barre'],['Bm','barre'],['Cm','barre'],['C#m/Dbm','barre'],['Dm','open'],['D#m/Ebm','barre'],['Em','open'],['Fm','barre'],['F#m/Gbm','barre'],['Gm','barre'],['G#m/Abm','barre']],
+    '7th — Major': [['Amaj7','open'],['Bbmaj7','barre'],['Bmaj7','barre'],['Cmaj7','open'],['Dmaj7','open'],['Emaj7','open'],['Fmaj7','open'],['Gmaj7','open'],['G#maj7','barre']],
+    '7th — Minor': [['Am7','open'],['Bm7','barre'],['Cm7','barre'],['Dm7','open'],['Em7','open'],['Fm7','barre'],['Gm7','barre']],
+  };
+
+  let ocActiveTab = 'Major';
+  let ocSelectedChord = null;
+
+  function renderOpenChordsPanel(){
+    exList.innerHTML='';
+
+    // Tabs
+    const tabRow=document.createElement('div'); tabRow.className='oc-tabs';
+    Object.keys(OC_CHORDS).forEach(tab=>{
+      const btn=document.createElement('button'); btn.className='oc-tab'+(tab===ocActiveTab?' active':'');
+      btn.textContent=tab;
+      btn.addEventListener('click',()=>{
+        ocActiveTab=tab; ocSelectedChord=null;
+        renderOpenChordsPanel();
+      });
+      tabRow.appendChild(btn);
+    });
+    exList.appendChild(tabRow);
+
+    // Chord grid
+    const grid=document.createElement('div'); grid.className='oc-chord-grid';
+    OC_CHORDS[ocActiveTab].forEach(([chord, type])=>{
+      const btn=document.createElement('button');
+      btn.className='oc-chord-btn'+(type==='barre'?' barre':'')+(ocSelectedChord===chord?' selected':'');
+      btn.textContent=chord;
+      if(type==='barre'){
+        btn.title='Barre chord — tap to send to Vizi';
+        btn.addEventListener('click',()=>{
+          const cleanChord=chord.replace('/','').split('/')[0];
+          ocSelectedChord=chord;
+          document.querySelectorAll('.oc-chord-btn').forEach(b=>b.classList.remove('selected'));
+          btn.classList.add('selected');
+          showOcActionRow(chord);
+        });
+      } else {
+        btn.addEventListener('click',()=>{
+          ocSelectedChord=chord;
+          document.querySelectorAll('.oc-chord-btn').forEach(b=>b.classList.remove('selected'));
+          btn.classList.add('selected');
+          showOcActionRow(chord);
+          document.getElementById('ocBarreHint').classList.remove('show');
+        });
+      }
+      grid.appendChild(btn);
+    });
+    exList.appendChild(grid);
+
+    // Barre hint
+    const barreHint=document.createElement('div'); barreHint.className='oc-barre-hint'; barreHint.id='ocBarreHint';
+    barreHint.textContent='Greyed out chords are barre chords — head to Stage 7 to learn those with Vizi.';
+    exList.appendChild(barreHint);
+
+    // Action row (hidden until chord selected)
+    const actionRow=document.createElement('div'); actionRow.className='oc-action-row'; actionRow.id='ocActionRow';
+    const selLabel=document.createElement('div'); selLabel.className='oc-selected-label'; selLabel.textContent='You selected';
+    const selName=document.createElement('div'); selName.className='oc-selected-name'; selName.id='ocSelName'; selName.textContent='—';
+    const btnRow=document.createElement('div'); btnRow.className='oc-btn-row';
+    const chordBtn=document.createElement('button'); chordBtn.className='oc-action-btn chord-btn-oc'; chordBtn.textContent='🎸 Chord';
+    const arpBtn=document.createElement('button'); arpBtn.className='oc-action-btn arpeggio-btn-oc'; arpBtn.textContent='🎵 Arpeggio';
+    btnRow.appendChild(chordBtn); btnRow.appendChild(arpBtn);
+    actionRow.appendChild(selLabel); actionRow.appendChild(selName);
+    actionRow.appendChild(btnRow);
+    const fretStatus=document.createElement('div'); fretStatus.className='oc-fret-status'; fretStatus.id='ocFretStatus';
+    actionRow.appendChild(fretStatus);
+    exList.appendChild(actionRow);
+
+    chordBtn.addEventListener('click',()=>{
+      if(!ocSelectedChord)return;
+      navigateToVizi('open-chords', ocSelectedChord+' — Chord');
+    });
+    arpBtn.addEventListener('click',()=>{
+      if(!ocSelectedChord)return;
+      navigateToVizi('open-chords', ocSelectedChord+' — Arpeggio');
+    });
+
+    // Restore selection if any
+    if(ocSelectedChord) showOcActionRow(ocSelectedChord);
+
+    // Show barre hint if any barre chords in current tab
+    const hasBarres = OC_CHORDS[ocActiveTab].some(([,t])=>t==='barre');
+    if(hasBarres) document.getElementById('ocBarreHint').classList.add('show');
+  }
+
+  function showOcActionRow(chord){
+    const row=document.getElementById('ocActionRow');
+    const name=document.getElementById('ocSelName');
+    if(row){ row.classList.add('show'); }
+    if(name){ name.textContent=chord; }
+  }
+
+  function navigateToVizi(stage, exercise){
+    const p=new URLSearchParams({stage, exercise});
+    window.location.href='vizi.html?'+p.toString();
+  }
+
+
+  // Diatonic chord sets — which chords naturally belong to each scale
+  const DIATONIC = {
+    'G Major':  ['G','Am','Bm','C','D','Em','F#dim'],
+    'C Major':  ['C','Dm','Em','F','G','Am','Bdim'],
+    'D Major':  ['D','Em','F#m','G','A','Bm','C#dim'],
+    'A Major':  ['A','Bm','C#m','D','E','F#m','G#dim'],
+    'E Major':  ['E','F#m','G#m','A','B','C#m','D#dim'],
+    'A Minor':  ['Am','Bdim','C','Dm','Em','F','G'],
+    'E Minor':  ['Em','F#dim','G','Am','Bm','C','D'],
+    'D Minor':  ['Dm','Edim','F','Gm','Am','Bb','C'],
+  };
+
+  // Open chord voicings
+  const OPEN_VOICINGS = {
+    'A':'CHORD A','C':'CHORD C','D':'CHORD D','E':'CHORD E',
+    'G':'CHORD G','F':'CHORD F','B':'CHORD B',
+    'Am':'CHORD Am','Dm':'CHORD Dm','Em':'CHORD Em',
+    'Bm':'CHORD Bm','Gm':'CHORD Gm',
+    'Amaj7':'CHORD Amaj7','Cmaj7':'CHORD Cmaj7','Dmaj7':'CHORD Dmaj7',
+    'Emaj7':'CHORD Emaj7','Fmaj7':'CHORD Fmaj7','Gmaj7':'CHORD Gmaj7',
+    'Am7':'CHORD Am7','Dm7':'CHORD Dm7','Em7':'CHORD Em7',
+    'G7':'CHORD G7','C7':'CHORD C7','D7':'CHORD D7',
+    'E7':'CHORD E7','A7':'CHORD A7','B7':'CHORD B7',
+  };
+
+  // All 12 chromatic chords per type
+  const ALL_CHORDS = {
+    'Major': [
+      {n:'A',open:true},{n:'A#/Bb',open:false},{n:'B',open:false},
+      {n:'C',open:true},{n:'C#/Db',open:false},{n:'D',open:true},
+      {n:'D#/Eb',open:false},{n:'E',open:true},{n:'F',open:false},
+      {n:'F#/Gb',open:false},{n:'G',open:true},{n:'G#/Ab',open:false},
+    ],
+    'Minor': [
+      {n:'Am',open:true},{n:'A#m/Bbm',open:false},{n:'Bm',open:false},
+      {n:'Cm',open:false},{n:'C#m/Dbm',open:false},{n:'Dm',open:true},
+      {n:'D#m/Ebm',open:false},{n:'Em',open:true},{n:'Fm',open:false},
+      {n:'F#m/Gbm',open:false},{n:'Gm',open:false},{n:'G#m/Abm',open:false},
+    ],
+    'Major 7th': [
+      {n:'Amaj7',open:true},{n:'Bbmaj7',open:false},{n:'Bmaj7',open:false},
+      {n:'Cmaj7',open:true},{n:'Dmaj7',open:true},{n:'Emaj7',open:true},
+      {n:'Fmaj7',open:true},{n:'Gmaj7',open:true},{n:'G#maj7',open:false},
+    ],
+    'Minor 7th': [
+      {n:'Am7',open:true},{n:'Bm7',open:false},{n:'Cm7',open:false},
+      {n:'Dm7',open:true},{n:'Em7',open:true},{n:'Fm7',open:false},{n:'Gm7',open:false},
+    ],
+  };
+
+  const BARRE_SHAPES = ['E Shape','A Shape','C Shape','G Shape','D Shape'];
+  const CHROMATIC_ROOTS = ['C','C#/Db','D','D#/Eb','E','F','F#/Gb','G','G#/Ab','A','A#/Bb','B'];
+  const TRIAD_GROUPS_CP = [
+    { label:'Root on High E', key:'hie', group:'high' },
+    { label:'Root on B',      key:'b',   group:'high' },
+    { label:'Root on G',      key:'g',   group:'high' },
+    { label:'Root on D',      key:'d',   group:'low'  },
+    { label:'Root on A',      key:'a',   group:'low'  },
+    { label:'Root on Low E',  key:'le',  group:'low'  },
+  ];
+
+  // Progression state
+  let cpView = 'byType'; // 'byType' or 'byChord'
+  let cpByChordNote = null;
+  let cpProgression = [];
+  let cpLooping = false;
+  let cpPlayTimer = null;
+  let cpActiveTab = 'Major';
+  let cpActiveScale = null;
+  let cpBarreShape = null;
+  let cpBarreRoot = null;
+  let cpTriadGroup = null;
+  let cpTriadRoot = null;
+  let cpSelectedChord = null;
+
+
+  // ── BY CHORD VIEW ────────────────────────────────────────────
+  const ALL_NOTES_CP = ['C','C#/Db','D','D#/Eb','E','F','F#/Gb','G','G#/Ab','A','A#/Bb','B'];
+
+  // Map display note to clean root for commands
+  function cleanNote(n){ return n.replace('/','').split('/')[0]; }
+
+  // All voicings for a given note
+  function getVoicings(note){
+    const root = cleanNote(note);
+    const voicings = [];
+    // Open chord if available
+    const openCmd = OPEN_VOICINGS[root] || OPEN_VOICINGS[root+'m'] || null;
+    if(OPEN_VOICINGS[root])   voicings.push({tag:'open',  label:'Open '+root+' Major',          cmd:'CHORD '+root,    type:'open'});
+    if(OPEN_VOICINGS[root+'m']) voicings.push({tag:'open',label:'Open '+root+' Minor',           cmd:'CHORD '+root+'m',type:'open'});
+    if(OPEN_VOICINGS[root+'maj7']) voicings.push({tag:'open',label:'Open '+root+' Major 7th',   cmd:'CHORD '+root+'maj7',type:'open'});
+    if(OPEN_VOICINGS[root+'m7'])   voicings.push({tag:'open',label:'Open '+root+' Minor 7th',   cmd:'CHORD '+root+'m7', type:'open'});
+    if(OPEN_VOICINGS[root+'7'])    voicings.push({tag:'open',label:'Open '+root+' Dom 7th',      cmd:'CHORD '+root+'7',  type:'open'});
+    // Barre shapes
+    ['E Shape','A Shape','C Shape','G Shape','D Shape'].forEach(shape=>{
+      voicings.push({tag:'barre', label:root+' Major — '+shape, cmd:'CHORD '+root, type:'barre', shape});
+      voicings.push({tag:'barre', label:root+' Minor — '+shape, cmd:'CHORD '+root+'m', type:'barre', shape});
+    });
+    // Triads high
+    ['Root on High E','Root on B','Root on G'].forEach(grp=>{
+      const key = grp.includes('High E')?'HE':grp.includes('Root on B')?'B':'G';
+      voicings.push({tag:'triad', label:root+' Major Triad ('+key+')', cmd:'TRIAD '+key+' '+root,     type:'triad'});
+      voicings.push({tag:'triad', label:root+' Minor Triad ('+key+')', cmd:'TRIAD '+key+' '+root+'M', type:'triad'});
+    });
+    // Triads low
+    [['Root on D','D'],['Root on A','A'],['Root on Low E','LE']].forEach(([grp,key])=>{
+      voicings.push({tag:'triad', label:root+' Major Triad ('+key+')', cmd:'TRIAD '+key+' '+root,     type:'triad'});
+      voicings.push({tag:'triad', label:root+' Minor Triad ('+key+')', cmd:'TRIAD '+key+' '+root+'M', type:'triad'});
+    });
+    return voicings;
+  }
+
+  function renderByChordView(container){
+    // Note picker
+    const noteLabel=document.createElement('span'); noteLabel.className='choice-panel-label';
+    noteLabel.textContent='Choose a note — see every way to play it';
+    container.appendChild(noteLabel);
+
+    const noteGrid=document.createElement('div'); noteGrid.className='cp-chord-note-grid';
+    ALL_NOTES_CP.forEach(note=>{
+      const btn=document.createElement('button');
+      btn.className='cp-chord-note-btn'+(cpByChordNote===note?' active':'');
+      btn.textContent=note;
+      btn.addEventListener('click',()=>{
+        cpByChordNote=note;
+        renderChordsPanel();
+      });
+      noteGrid.appendChild(btn);
+    });
+    container.appendChild(noteGrid);
+
+    if(!cpByChordNote) return;
+
+    // Voicings list
+    const voicings = getVoicings(cpByChordNote);
+    const listLabel=document.createElement('span'); listLabel.className='choice-panel-label';
+    listLabel.textContent='All ways to play '+cpByChordNote;
+    container.appendChild(listLabel);
+
+    const list=document.createElement('div'); list.className='cp-voicings-list';
+    voicings.forEach(v=>{
+      const item=document.createElement('div'); item.className='cp-voicing-item';
+      const tag=document.createElement('span'); tag.className='cp-voicing-tag '+v.tag; tag.textContent=v.tag;
+      const name=document.createElement('span'); name.className='cp-voicing-name'; name.textContent=v.label;
+      const arr=document.createElement('span'); arr.className='cp-voicing-arrow'; arr.textContent='›';
+      item.appendChild(tag); item.appendChild(name); item.appendChild(arr);
+      item.addEventListener('click',()=>{
+        cpSelectedChord={label:v.label, cmd:v.cmd, type:v.type};
+        showChordActions(container.parentElement||exList);
+      });
+      list.appendChild(item);
+    });
+    container.appendChild(list);
+  }
+
+
+  function makeVideoIntroBtn(label, videoUrl){
+    const btn = document.createElement('button');
+    btn.className = 'cp-video-intro-btn';
+    btn.innerHTML = '<span class="cp-vid-icon">▶</span><span>'+label+'</span>';
+    if(!videoUrl){
+      btn.style.opacity = '.45';
+      btn.title = 'Video coming soon';
+      btn.disabled = true;
+    } else {
+      btn.addEventListener('click', ()=>{ openStageVideo(videoUrl); });
+    }
+    return btn;
+  }
+
+  function renderChordsPanel(){
+    exList.innerHTML='';
+
+    // ── View toggle: By Type / By Chord ──
+    const viewToggle=document.createElement('div'); viewToggle.className='cp-view-toggle';
+    const byTypeBtn=document.createElement('button'); byTypeBtn.className='cp-view-btn'+(cpView==='byType'?' active':''); byTypeBtn.textContent='By Type';
+    const byChordBtn=document.createElement('button'); byChordBtn.className='cp-view-btn'+(cpView==='byChord'?' active':''); byChordBtn.textContent='By Chord';
+    byTypeBtn.addEventListener('click',()=>{ cpView='byType'; renderChordsPanel(); });
+    byChordBtn.addEventListener('click',()=>{ cpView='byChord'; renderChordsPanel(); });
+    viewToggle.appendChild(byTypeBtn); viewToggle.appendChild(byChordBtn);
+    exList.appendChild(viewToggle);
+
+    // By Chord view — show note picker and all voicings
+    if(cpView==='byChord'){
+      renderByChordView(exList);
+      // Still show action panel + progression at bottom
+      const actionWrap2=document.createElement('div');
+      actionWrap2.className='cp-chord-actions'; actionWrap2.id='cpChordActions';
+      const selName2=document.createElement('div'); selName2.className='cp-selected-chord'; selName2.id='cpSelName';
+      selName2.textContent=cpSelectedChord?cpSelectedChord.label:'';
+      const actBtns2=document.createElement('div'); actBtns2.className='cp-action-btns';
+      const sendBtn2=document.createElement('button'); sendBtn2.className='cp-action-btn send'; sendBtn2.textContent='🎸 Light Chord';
+      const progBtn2=document.createElement('button'); progBtn2.className='cp-action-btn prog'; progBtn2.textContent='+ Add to Progression';
+      const arpBtn2=document.createElement('button'); arpBtn2.className='cp-action-btn arp'; arpBtn2.textContent='🎵 Arpeggio';
+      actBtns2.appendChild(sendBtn2); actBtns2.appendChild(progBtn2); actBtns2.appendChild(arpBtn2);
+      actionWrap2.appendChild(selName2); actionWrap2.appendChild(actBtns2);
+      if(cpSelectedChord) actionWrap2.classList.add('show');
+      exList.appendChild(actionWrap2);
+      sendBtn2.addEventListener('click',()=>{ if(cpSelectedChord) goToVizi('chords',cpSelectedChord.label+' — Chord'); });
+      arpBtn2.addEventListener('click',()=>{ if(cpSelectedChord) goToVizi('chords',cpSelectedChord.label+' — Arpeggio'); });
+      progBtn2.addEventListener('click',()=>{ if(cpSelectedChord){ cpProgression.push({...cpSelectedChord}); updateProgBar(); }});
+      // Add progression builder
+      const progSec2=buildProgSection();
+      exList.appendChild(progSec2);
+      return;
+    }
+
+    // ── Scale filter toggle ──
+    const filterHead=document.createElement('div'); filterHead.className='cp-section-head';
+    filterHead.innerHTML='<span class="cp-section-icon">🎵</span><span>Scale Filter</span>';
+    const filterToggle=document.createElement('button'); filterToggle.className='cp-section-toggle';
+    filterToggle.textContent=cpActiveScale?'On — '+cpActiveScale:'Off';
+    filterToggle.style.color=cpActiveScale?'var(--teal)':'';
+    filterToggle.style.borderColor=cpActiveScale?'var(--teal)':'';
+    filterHead.appendChild(filterToggle);
+    exList.appendChild(filterHead);
+
+    const filterPanel=document.createElement('div');
+    filterPanel.className='cp-scale-filter'+(cpActiveScale?' show':'');
+    filterPanel.id='cpScaleFilter';
+    const filterLabel=document.createElement('span'); filterLabel.className='cp-scale-filter-label';
+    filterLabel.textContent='Show only chords from this scale';
+    filterPanel.appendChild(filterLabel);
+    const scaleGrid=document.createElement('div'); scaleGrid.className='cp-scale-grid';
+    Object.keys(DIATONIC).forEach(scale=>{
+      const btn=document.createElement('button'); btn.className='cp-scale-btn'+(cpActiveScale===scale?' active':'');
+      btn.textContent=scale;
+      btn.addEventListener('click',()=>{
+        cpActiveScale=cpActiveScale===scale?null:scale;
+        renderChordsPanel();
+      });
+      scaleGrid.appendChild(btn);
+    });
+    filterPanel.appendChild(scaleGrid);
+    if(cpActiveScale){
+      const hint=document.createElement('div'); hint.className='cp-filter-hint';
+      hint.textContent='Teal chords belong to '+cpActiveScale+'. Others are still tappable.';
+      filterPanel.appendChild(hint);
+    }
+    exList.appendChild(filterPanel);
+
+    filterToggle.addEventListener('click',()=>{
+      filterPanel.classList.toggle('show');
+    });
+
+    // ── SECTION 1: Open Chords ──
+    const ocHead=document.createElement('div'); ocHead.className='cp-section-head';
+    ocHead.innerHTML='<span class="cp-section-icon">🎸</span><span>Open Chords</span>';
+    exList.appendChild(ocHead);
+
+    const tabs=document.createElement('div'); tabs.className='cp-tabs';
+    Object.keys(ALL_CHORDS).forEach(tab=>{
+      const btn=document.createElement('button'); btn.className='cp-tab'+(tab===cpActiveTab?' active':'');
+      btn.textContent=tab;
+      btn.addEventListener('click',()=>{ cpActiveTab=tab; renderChordsPanel(); });
+      tabs.appendChild(btn);
+    });
+    exList.appendChild(tabs);
+
+    const chordGrid=document.createElement('div'); chordGrid.className='cp-chord-grid';
+    const diatonicSet=cpActiveScale?DIATONIC[cpActiveScale]:null;
+    ALL_CHORDS[cpActiveTab].forEach(({n,open})=>{
+      const btn=document.createElement('button');
+      const inScale=diatonicSet&&diatonicSet.some(d=>d.replace('dim','').replace('m','')===n.replace('m','').replace('maj7','').replace('7','').replace('/','').split('/')[0]);
+      const inProg=cpProgression.some(p=>p.label===n);
+      btn.className='cp-chord-btn'+(open?'':' barre-chord')+(inScale?' in-scale':'')+(inProg?' in-progression':'');
+      btn.textContent=n;
+      if(inProg){
+        const badge=document.createElement('span'); badge.className='cp-badge';
+        badge.textContent=cpProgression.filter(p=>p.label===n).length;
+        btn.appendChild(badge);
+      }
+      if(!open){
+        // Barre chords still clickable — route to Vizi as barre chord
+        btn.title='Barre chord — tap to send to Vizi';
+        btn.addEventListener('click',()=>{
+          const cleanN=n.replace('/','').split('/')[0];
+          cpSelectedChord={label:n, cmd:'CHORD '+cleanN, type:'barre'};
+          showChordActions(exList);
+        });
+      } else {
+        btn.addEventListener('click',()=>{
+          cpSelectedChord={label:n, cmd:OPEN_VOICINGS[n]||'CHORD '+n, type:'open'};
+          showChordActions(exList);
+        });
+      }
+      chordGrid.appendChild(btn);
+    });
+    exList.appendChild(chordGrid);
+
+    const barreNote=document.createElement('div');
+    barreNote.style.cssText='font-size:.7rem;color:var(--text-light);margin-bottom:.85rem;text-align:center;';
+    barreNote.textContent='Greyed = barre chord — tap to send to Vizi, or use the Barre section below for more control';
+    exList.appendChild(barreNote);
+
+    // ── SECTION 2: Barre Chords ──
+    const bcHead=document.createElement('div'); bcHead.className='cp-section-head';
+    bcHead.innerHTML='<span class="cp-section-icon">🤘</span><span>Barre Chords</span>';
+    exList.appendChild(bcHead);
+    exList.appendChild(makeVideoIntroBtn('Watch Barre Chord Intro', activeStage&&activeStage.barreVideoUrl||''));
+
+    const barreWrap=document.createElement('div'); barreWrap.className='cp-barre-wrap';
+    const shapes=document.createElement('div'); shapes.className='cp-barre-shapes';
+    BARRE_SHAPES.forEach(shape=>{
+      const btn=document.createElement('button');
+      btn.className='cp-shape-btn'+(cpBarreShape===shape?' active':'');
+      btn.textContent=shape;
+      btn.addEventListener('click',()=>{ cpBarreShape=shape; renderChordsPanel(); });
+      shapes.appendChild(btn);
+    });
+    barreWrap.appendChild(shapes);
+
+    if(cpBarreShape){
+      const rootGrid=document.createElement('div'); rootGrid.className='cp-root-grid';
+      CHROMATIC_ROOTS.forEach(root=>{
+        const btn=document.createElement('button');
+        btn.className='cp-root-btn'+(cpBarreRoot===root?' active':'');
+        btn.textContent=root;
+        btn.addEventListener('click',()=>{
+          cpBarreRoot=root;
+          const cleanRoot=root.replace('/','').split('/')[0];
+          cpSelectedChord={
+            label:cleanRoot+' ('+cpBarreShape+')',
+            cmd:'CHORD '+cleanRoot,
+            type:'barre',
+            shape:cpBarreShape,
+            root:root
+          };
+          renderChordsPanel();
+          showChordActions(exList);
+        });
+        rootGrid.appendChild(btn);
+      });
+      barreWrap.appendChild(rootGrid);
+    } else {
+      const hint=document.createElement('div');
+      hint.style.cssText='font-size:.74rem;color:var(--text-light);padding:.4rem 0 .6rem;';
+      hint.textContent='Tap a shape first, then pick your root note';
+      barreWrap.appendChild(hint);
+    }
+    exList.appendChild(barreWrap);
+
+    // ── SECTION 3: Triads ──
+    const triHead=document.createElement('div'); triHead.className='cp-section-head';
+    triHead.innerHTML='<span class="cp-section-icon">✨</span><span>Triads</span>';
+    exList.appendChild(triHead);
+    exList.appendChild(makeVideoIntroBtn('Watch Triad Intro', activeStage&&activeStage.triadVideoUrl||''));
+
+    const triadGroupRow=document.createElement('div'); triadGroupRow.className='cp-tabs';
+    TRIAD_GROUPS_CP.forEach(grp=>{
+      const btn=document.createElement('button');
+      btn.className='cp-tab'+(cpTriadGroup===grp.key?' active':'');
+      btn.textContent=grp.label;
+      btn.addEventListener('click',()=>{ cpTriadGroup=grp.key; renderChordsPanel(); });
+      triadGroupRow.appendChild(btn);
+    });
+    exList.appendChild(triadGroupRow);
+
+    if(cpTriadGroup){
+      const triadRootGrid=document.createElement('div'); triadRootGrid.className='cp-root-grid';
+      CHROMATIC_ROOTS.forEach(root=>{
+        const btn=document.createElement('button');
+        btn.className='cp-root-btn'+(cpTriadRoot===root?' active':'');
+        btn.textContent=root;
+        btn.addEventListener('click',()=>{
+          cpTriadRoot=root;
+          const cleanRoot=root.replace('/','').split('/')[0];
+          cpSelectedChord=null;
+          // Re-render panel then show type picker in correct spot
+          renderChordsPanel();
+        });
+        triadRootGrid.appendChild(btn);
+      });
+      exList.appendChild(triadRootGrid);
+
+      // Triad type picker goes here — BEFORE action panel
+      const triadPickerMount=document.createElement('div');
+      triadPickerMount.id='cpTriadPickerMount';
+      exList.appendChild(triadPickerMount);
+      if(cpTriadRoot){
+        const cleanRoot=cpTriadRoot.replace('/','').split('/')[0];
+        showTriadTypePicker(cleanRoot, cpTriadGroup, triadPickerMount);
+      }
+    } else {
+      const hint=document.createElement('div');
+      hint.style.cssText='font-size:.74rem;color:var(--text-light);padding:.4rem 0 .6rem;';
+      hint.textContent='Tap a string group to choose where the root sits';
+      exList.appendChild(hint);
+    }
+
+    // ── Chord action panel (shows after selection) ──
+    const actionWrap=document.createElement('div');
+    actionWrap.className='cp-chord-actions'; actionWrap.id='cpChordActions';
+    const selName=document.createElement('div'); selName.className='cp-selected-chord'; selName.id='cpSelName';
+    selName.textContent=cpSelectedChord?cpSelectedChord.label:'';
+    const actBtns=document.createElement('div'); actBtns.className='cp-action-btns';
+    const sendBtn=document.createElement('button'); sendBtn.className='cp-action-btn send'; sendBtn.textContent='🎸 Light Chord';
+    const progBtn=document.createElement('button'); progBtn.className='cp-action-btn prog'; progBtn.textContent='+ Add to Progression';
+    const arpBtn=document.createElement('button'); arpBtn.className='cp-action-btn arp'; arpBtn.textContent='🎵 Arpeggio';
+    actBtns.appendChild(sendBtn); actBtns.appendChild(progBtn); actBtns.appendChild(arpBtn);
+    actionWrap.appendChild(selName); actionWrap.appendChild(actBtns);
+    if(cpSelectedChord) actionWrap.classList.add('show');
+    exList.appendChild(actionWrap);
+
+    sendBtn.addEventListener('click',()=>{
+      if(!cpSelectedChord)return;
+      goToVizi('chords', cpSelectedChord.label+' — Chord');
+    });
+    arpBtn.addEventListener('click',()=>{
+      if(!cpSelectedChord)return;
+      goToVizi('chords', cpSelectedChord.label+' — Arpeggio');
+    });
+    progBtn.addEventListener('click',()=>{
+      if(!cpSelectedChord)return;
+      cpProgression.push({...cpSelectedChord});
+      updateProgBar();
+    });
+
+    // ── PROGRESSION BUILDER ──
+    const progSec=buildProgSection();
+    exList.appendChild(progSec);
+  }
+
+  function buildProgSection(){
+    const progSection=document.createElement('div'); progSection.className='cp-prog-section';
+    const progLabel=document.createElement('span'); progLabel.className='cp-prog-label'; progLabel.textContent='Progression';
+    progSection.appendChild(progLabel);
+    const progBar=document.createElement('div'); progBar.className='cp-prog-bar'; progBar.id='cpProgBar';
+    buildProgBar(progBar); progSection.appendChild(progBar);
+    const loopRow=document.createElement('div'); loopRow.className='cp-loop-row';
+    const loopLabel=document.createElement('span'); loopLabel.className='cp-loop-label'; loopLabel.textContent='Loop';
+    const loopToggle=document.createElement('button'); loopToggle.className='cp-loop-toggle'+(cpLooping?' on':''); loopToggle.id='cpLoopToggle';
+    loopToggle.addEventListener('click',()=>{ cpLooping=!cpLooping; loopToggle.classList.toggle('on',cpLooping); });
+    loopRow.appendChild(loopLabel); loopRow.appendChild(loopToggle); progSection.appendChild(loopRow);
+    const progControls=document.createElement('div'); progControls.className='cp-prog-controls';
+    const playBtn=document.createElement('button'); playBtn.className='cp-prog-btn play'; playBtn.textContent='▶ Play Progression';
+    const viziBtn=document.createElement('button'); viziBtn.className='cp-prog-btn vizi'; viziBtn.textContent='Ask Vizi →';
+    const clearBtn=document.createElement('button'); clearBtn.className='cp-prog-btn clear'; clearBtn.textContent='Clear';
+    playBtn.disabled=cpProgression.length<1; viziBtn.disabled=cpProgression.length<1;
+    progControls.appendChild(playBtn); progControls.appendChild(viziBtn); progControls.appendChild(clearBtn);
+    progSection.appendChild(progControls);
+    const progStatus=document.createElement('div'); progStatus.className='cp-prog-status'; progStatus.id='cpProgStatus';
+    progSection.appendChild(progStatus);
+    playBtn.addEventListener('click',()=>playProgression(progStatus));
+    viziBtn.addEventListener('click',()=>{ if(!cpProgression.length)return; const progStr=cpProgression.map(p=>p.label).join(' → '); goToVizi('chords','Progression: '+progStr); });
+    clearBtn.addEventListener('click',()=>{ cpProgression=[]; cpPlayTimer=null; renderChordsPanel(); });
+    return progSection;
+  }
+
+  function showTriadTypePicker(root, group, container){
+    container.innerHTML='';
+    const picker=document.createElement('div'); picker.id='cpTriadTypePicker';
+    picker.style.cssText='display:flex;gap:.4rem;margin:.5rem 0 .85rem;';
+    ['Major','Minor'].forEach(type=>{
+      const btn=document.createElement('button');
+      btn.style.cssText='flex:1;padding:.5rem;border-radius:8px;font-family:"DM Mono",monospace;font-size:.7rem;font-weight:600;cursor:pointer;border:1.5px solid var(--cream-dark);background:var(--white);transition:all .18s;';
+      btn.textContent=root+' '+type+' Triad';
+      btn.style.borderColor=type==='Major'?'rgba(232,160,32,0.6)':'rgba(27,79,138,0.4)';
+      btn.style.color=type==='Major'?'#BA7517':'var(--blue)';
+      btn.addEventListener('click',()=>{
+        const grpUp=group.toUpperCase();
+        cpSelectedChord={
+          label:root+' '+type+' Triad ('+group.toUpperCase()+')',
+          cmd:'TRIAD '+grpUp+' '+root+(type==='Minor'?'M':''),
+          type:'triad'
+        };
+        document.getElementById('cpSelName').textContent=cpSelectedChord.label;
+        document.getElementById('cpChordActions').classList.add('show');
+      });
+      picker.appendChild(btn);
+    });
+    container.appendChild(picker);
+  }
+
+  function showChordActions(container){
+    const el=document.getElementById('cpChordActions');
+    const nm=document.getElementById('cpSelName');
+    if(el){ el.classList.add('show'); }
+    if(nm&&cpSelectedChord){ nm.textContent=cpSelectedChord.label; }
+  }
+
+  function buildProgBar(bar){
+    bar.innerHTML='';
+    if(!cpProgression.length){
+      const empty=document.createElement('span'); empty.className='cp-prog-empty';
+      empty.textContent='Tap a chord then "+ Add to Progression"';
+      bar.appendChild(empty); return;
+    }
+    cpProgression.forEach((ch,i)=>{
+      const item=document.createElement('div'); item.className='cp-prog-chord';
+      const lbl=document.createElement('span'); lbl.textContent=ch.label;
+      const x=document.createElement('span'); x.className='cp-prog-x'; x.textContent='×';
+      x.addEventListener('click',()=>{ cpProgression.splice(i,1); updateProgBar(); });
+      item.appendChild(lbl); item.appendChild(x);
+      bar.appendChild(item);
+      if(i<cpProgression.length-1){
+        const arr=document.createElement('span'); arr.className='cp-prog-arrow'; arr.textContent='→';
+        bar.appendChild(arr);
+      }
+    });
+  }
+
+  function updateProgBar(){
+    const bar=document.getElementById('cpProgBar');
+    if(bar) buildProgBar(bar);
+    const playBtn=document.querySelector('.cp-prog-btn.play');
+    const viziBtn=document.querySelector('.cp-prog-btn.vizi');
+    if(playBtn) playBtn.disabled=cpProgression.length<1;
+    if(viziBtn) viziBtn.disabled=cpProgression.length<1;
+  }
+
+  function playProgression(statusEl){
+    if(!cpProgression.length)return;
+    // Send entire progression to Vizi in one call
+    const progStr = cpProgression.map(p=>p.label).join(' → ');
+    goToVizi('chords','Progression: '+progStr);
+  }
+
+  function goToVizi(stage, exercise){
+    const p=new URLSearchParams({stage,exercise});
+    window.location.href='vizi.html?'+p.toString();
+  }
+
+  function renderChoicePanel(stage){
+    if (stage.id==='strumming'){ renderStrummingPanel(); return; }
+    if (stage.id==='chord-theory'){ renderChordBuilder(); return; }
+    if (stage.id==='chords'){ renderChordsPanel(); return; }
+    const def = CHOICE_PANELS[stage.id];
+    exList.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'choice-panel-label';
+    label.textContent = def.label;
+    exList.appendChild(label);
+    if (def.hint){
+      const hint = document.createElement('div');
+      hint.className = 'choice-hint';
+      hint.textContent = def.hint;
+      exList.appendChild(hint);
+    }
+
+    // Soloing: Bandcamp + grouped key/scale
+    if (def.bandcamp){ renderSoloingPanel(def); return; }
+
+    // Standard choice grid
+    const grid = document.createElement('div');
+    grid.className = 'choice-grid cols-' + def.cols;
+    def.choices.forEach(ch => {
+      const btn = document.createElement('button'); btn.className = 'choice-btn';
+      btn.innerHTML = '<span class="cb-icon">' + ch.icon + '</span><span><span class="cb-name">' + ch.name + '</span><span class="cb-desc">' + ch.desc + '</span></span><span class="cb-arrow">&#8594;</span>';
+      btn.addEventListener('click', () => {
+        if (ch.name === 'All Scales — Reference'){ renderAllScalesRef(); return; }
+        if (stage.id === 'warmup' && SCALE_KEYS[ch.name]){ renderScaleSubPanel(stage.id, ch.name); return; }
+        const ex = ch.name + ' — ' + ch.desc;
+        const p = new URLSearchParams({stage:stage.id, exercise:ex});
+        window.location.href = 'vizi.html?' + p.toString();
+      });
+      grid.appendChild(btn);
+    });
+    exList.appendChild(grid);
+  }
+
+  function renderScaleSubPanel(stageId, scaleType){
+    exList.innerHTML = '';
+    const back = document.createElement('button'); back.className = 'scale-back-btn'; back.textContent = '← Back';
+    back.addEventListener('click', () => renderChoicePanel(STAGES.find(s => s.id === stageId)));
+    exList.appendChild(back);
+    const label = document.createElement('span'); label.className = 'choice-panel-label';
+    label.textContent = 'Choose a key for ' + scaleType; exList.appendChild(label);
+    const pat = SCALE_PATTERNS[scaleType];
+    if (pat){
+      const h = document.createElement('div'); h.className = 'choice-hint';
+      h.textContent = pat.desc + ' — pattern: ' + pat.steps.join(' – '); exList.appendChild(h);
+    }
+    const grid = document.createElement('div'); grid.className = 'scale-key-grid';
+    SCALE_KEYS[scaleType].forEach(k => {
+      const btn = document.createElement('button'); btn.className = 'scale-key-btn';
+      btn.innerHTML = '<span class="skb-key">' + k.key + '</span><span class="skb-desc">' + k.notes.map(n=>n.n).join(' – ') + '</span>';
+      btn.addEventListener('click', () => {
+        const p = new URLSearchParams({stage:stageId, exercise:k.key});
+        window.location.href = 'vizi.html?' + p.toString();
+      });
+      grid.appendChild(btn);
+    });
+    exList.appendChild(grid);
+  }
+
+  function renderAllScalesRef(){
+    exList.innerHTML = '';
+    const back = document.createElement('button'); back.className = 'scale-back-btn'; back.textContent = '← Back';
+    back.addEventListener('click', () => renderChoicePanel(STAGES.find(s => s.id === 'warmup')));
+    exList.appendChild(back);
+    const label = document.createElement('span'); label.className = 'choice-panel-label';
+    label.textContent = 'Scale Reference — Intervals & Notes'; exList.appendChild(label);
+    const hint = document.createElement('div'); hint.className = 'choice-hint';
+    hint.textContent = 'W = whole step (2 frets)  H = half step (1 fret)  1.5 = 3 frets.  Root = red  3rd = green  5th = blue  7th = gold.';
+    exList.appendChild(hint);
+    ALL_SCALES_REF.forEach(scale => {
+      const card = document.createElement('div'); card.className = 'scale-ref-card';
+      const nm = document.createElement('div'); nm.className = 'scale-ref-name'; nm.textContent = scale.name; card.appendChild(nm);
+      const pat = document.createElement('div'); pat.className = 'scale-ref-pattern';
+      scale.pattern.forEach((step,i) => {
+        const pill = document.createElement('span'); pill.className = 'step-pill ' + (step==='H'?'H':'W'); pill.textContent = step; pat.appendChild(pill);
+        if (i < scale.pattern.length-1){ const arr = document.createElement('span'); arr.className='step-pill arrow'; arr.textContent='→'; pat.appendChild(arr); }
+      });
+      card.appendChild(pat);
+      const notesRow = document.createElement('div'); notesRow.className = 'scale-ref-notes';
+      scale.notes.forEach(note => {
+        const el = document.createElement('div'); el.className = 'scale-note ' + (note.cls||'');
+        el.innerHTML = '<span class="sn-name">' + note.n + '</span><span class="sn-label">' + note.l + '</span>';
+        notesRow.appendChild(el);
+      });
+      card.appendChild(notesRow); exList.appendChild(card);
+    });
+  }
+
+  function renderExercises(stage){
+    if (CHOICE_PANELS[stage.id]||stage.id==='strumming'||stage.id==='chord-theory'||stage.id==='chords'){ renderChoicePanel(stage); return; }
+    const p = getProgress();
+    const done = (p[stage.id] && p[stage.id].exercisesDone) || [];
+    exList.innerHTML = '';
+    stage.exercises.forEach((ex,i) => {
+      const item = document.createElement('div');
+      item.className = 'ex-item' + (done.includes(ex) ? ' done' : '');
+      item.innerHTML = '<div class="ex-num">' + (done.includes(ex)?'&#10003;':i+1) + '</div><div class="ex-name">' + ex + '</div><div class="ex-arrow">&#8594;</div>';
+      item.addEventListener('click', () => {
+        const params = new URLSearchParams({stage:stage.id, exercise:ex});
+        window.location.href = 'vizi.html?' + params.toString();
+      });
+      exList.appendChild(item);
+    });
+  }
+
+  document.getElementById('catClose').addEventListener('click', () => {
+    stopTuner();
+    window.location.href = 'index.html';
+  });
+
+  // Auto-open from sessionStorage or hash
+  function arriveAtStage(stageId){ setTimeout(() => openStage(stageId), 80); }
+  try {
+    const returnStage = sessionStorage.getItem('viziReturnStage');
+    if (returnStage && STAGES.find(s => s.id === returnStage)){
+      sessionStorage.removeItem('viziReturnStage'); arriveAtStage(returnStage);
+    } else if (window.location.hash){
+      const hashId = window.location.hash.slice(1);
+      if (STAGES.find(s => s.id === hashId)){
+        history.replaceState(null,'',window.location.pathname); arriveAtStage(hashId);
+      }
+    }
+  } catch(e){}
+
+  // ════════════════════════════════════════════════════════
+  // SOLO SCALE LIGHTING — sends SCALE command directly to
+  // Railway fretboard relay so backing track keeps playing
+  // ════════════════════════════════════════════════════════
+  const RAILWAY_URL = 'https://vizi-tts-proxy-production.up.railway.app';
+
+  // Map scale choice names to fretboard SCALE commands
+  const SCALE_COMMANDS = {
+    'E Minor — Major Scale':        'SCALE E major shape 1',
+    'E Minor — E Minor Pentatonic': 'SCALE E minor pentatonic shape 1',
+    'A Minor — Major Scale':        'SCALE A major shape 1',
+    'A Minor — A Minor Pentatonic': 'SCALE A minor pentatonic shape 1',
+    'G Major — Major Scale':        'SCALE G major shape 1',
+    'G Major — E Minor Pentatonic': 'SCALE E minor pentatonic shape 1',
+    'D Major — Major Scale':        'SCALE D major shape 1',
+    'D Major — B Minor Pentatonic': 'SCALE B minor pentatonic shape 1',
+    'C Major — Major Scale':        'SCALE C major shape 1',
+    'C Major — A Minor Pentatonic': 'SCALE A minor pentatonic shape 1',
+  };
+
+  let soloFeedbackEl = null; // set when solo panel is rendered
+
+  async function lightScaleOnFretboard(scaleName){
+    const cmd = SCALE_COMMANDS[scaleName];
+    if (!cmd){ console.warn('No command for', scaleName); return; }
+    if (soloFeedbackEl){
+      soloFeedbackEl.textContent = 'Lighting ' + scaleName.split(' — ')[1] + ' on fretboard...';
+      soloFeedbackEl.style.color = 'var(--gold)';
+    }
+    try {
+      const res = await fetch(RAILWAY_URL + '/fretboard-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd })
+      });
+      if (res.ok){
+        if (soloFeedbackEl){
+          soloFeedbackEl.textContent = 'Fretboard lit — solo away!';
+          soloFeedbackEl.style.color = 'var(--green)';
+        }
+      } else {
+        if (soloFeedbackEl){
+          soloFeedbackEl.textContent = 'Could not reach fretboard — check connection';
+          soloFeedbackEl.style.color = 'var(--red)';
+        }
+      }
+    } catch(e){
+      if (soloFeedbackEl){
+        soloFeedbackEl.textContent = 'Could not reach fretboard — check connection';
+        soloFeedbackEl.style.color = 'var(--red)';
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════
+  // TUNER — live pitch detection
+  // ════════════════════════════════════════════════════════
+  const STRINGS_TUNER = [
+    {name:'E',label:'Lo E',freq:82.41},{name:'A',label:'A',freq:110.00},
+    {name:'D',label:'D',freq:146.83},{name:'G',label:'G',freq:196.00},
+    {name:'B',label:'B',freq:246.94},{name:'E',label:'Hi E',freq:329.63}
+  ];
+  const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const tunerStatus = document.getElementById('tunerStatus');
+  const tunerNote   = document.getElementById('tunerNote');
+  const tunerFreq   = document.getElementById('tunerFreq');
+  const tunerNeedle = document.getElementById('tunerNeedle');
+  const tunerStringsEl = document.getElementById('tunerStrings');
+  const tunerMicBtn = document.getElementById('tunerMicBtn');
+
+  STRINGS_TUNER.forEach((s,i) => {
+    const el = document.createElement('div'); el.className = 'tuner-string-btn'; el.dataset.idx = i;
+    el.innerHTML = '<span class="sname">' + s.label + '</span><div class="sled"></div>';
+    tunerStringsEl.appendChild(el);
+  });
+
+  let tunerCtx=null, tunerStream=null, tunerAnalyser=null, tunerRAF=null, tunerRunning=false;
+  tunerMicBtn.addEventListener('click', () => { tunerRunning ? stopTuner() : startTuner(); });
+
+  async function startTuner(){
+    try {
+      tunerCtx = new (window.AudioContext||window.webkitAudioContext)();
+      tunerStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+      const src = tunerCtx.createMediaStreamSource(tunerStream);
+      tunerAnalyser = tunerCtx.createAnalyser(); tunerAnalyser.fftSize=2048;
+      src.connect(tunerAnalyser);
+      tunerRunning=true; tunerMicBtn.textContent='Stop Listening'; tunerMicBtn.classList.add('listening');
+      tunerStatus.textContent='Listening… play one string at a time';
+      tunerLoop();
+    } catch(e){ tunerStatus.textContent='Microphone blocked — allow mic access'; }
+  }
+  function stopTuner(){
+    tunerRunning=false;
+    if (tunerRAF) cancelAnimationFrame(tunerRAF);
+    if (tunerStream) tunerStream.getTracks().forEach(t=>t.stop());
+    if (tunerCtx) tunerCtx.close().catch(()=>{});
+    tunerCtx=null; tunerStream=null; tunerAnalyser=null;
+    tunerMicBtn.textContent='Start Listening'; tunerMicBtn.classList.remove('listening');
+    tunerStatus.textContent='Tap "Start Listening" and play a string';
+    tunerNote.textContent='—'; tunerNote.classList.remove('in-tune');
+    tunerFreq.innerHTML='&nbsp;';
+    tunerNeedle.style.left='50%'; tunerNeedle.classList.remove('in-tune');
+    document.querySelectorAll('.tuner-string-btn').forEach(el=>el.classList.remove('target','in-tune'));
+  }
+  function tunerLoop(){
+    if (!tunerRunning) return;
+    const buf=new Float32Array(tunerAnalyser.fftSize);
+    tunerAnalyser.getFloatTimeDomainData(buf);
+    const freq=autoCorrelate(buf,tunerCtx.sampleRate);
+    if (freq>0) updateTunerDisplay(freq);
+    tunerRAF=requestAnimationFrame(tunerLoop);
+  }
+  function autoCorrelate(buf,sampleRate){
+    const SIZE=buf.length; let rms=0;
+    for(let i=0;i<SIZE;i++) rms+=buf[i]*buf[i];
+    rms=Math.sqrt(rms/SIZE); if(rms<0.01) return -1;
+    let r1=0,r2=SIZE-1,thresh=0.2;
+    for(let i=0;i<SIZE/2;i++){if(Math.abs(buf[i])<thresh){r1=i;break;}}
+    for(let i=1;i<SIZE/2;i++){if(Math.abs(buf[SIZE-i])<thresh){r2=SIZE-i;break;}}
+    const trimmed=buf.slice(r1,r2); const n=trimmed.length; if(n<2) return -1;
+    const c=new Array(n).fill(0);
+    for(let lag=0;lag<n;lag++) for(let i=0;i<n-lag;i++) c[lag]+=trimmed[i]*trimmed[i+lag];
+    let d=0; while(d<n-1&&c[d]>c[d+1])d++;
+    let maxVal=-1,maxPos=-1;
+    for(let i=d;i<n;i++){if(c[i]>maxVal){maxVal=c[i];maxPos=i;}}
+    let T0=maxPos; if(T0<=0) return -1;
+    if(T0>0&&T0<n-1){const x1=c[T0-1],x2=c[T0],x3=c[T0+1],a=(x1+x3-2*x2)/2,b=(x3-x1)/2;if(a!==0)T0=T0-b/(2*a);}
+    return sampleRate/T0;
+  }
+  function nearestString(freq){
+    let best=STRINGS_TUNER[0],bestDiff=Infinity;
+    STRINGS_TUNER.forEach(s=>{const d=Math.abs(Math.log2(freq/s.freq));if(d<bestDiff){bestDiff=d;best=s;}});
+    return best;
+  }
+  function updateTunerDisplay(freq){
+    if(freq<60||freq>500) return;
+    const target=nearestString(freq);
+    const cents=1200*Math.log2(freq/target.freq);
+    const clamped=Math.max(-50,Math.min(50,cents));
+    const pct=50+(clamped/50)*50;
+    const inTune=Math.abs(cents)<5;
+    tunerNote.textContent=target.label; tunerNote.classList.toggle('in-tune',inTune);
+    tunerFreq.textContent=freq.toFixed(1)+' Hz  ·  target '+target.freq.toFixed(2)+' Hz  ·  '+(cents>0?'+':'')+cents.toFixed(0)+'c';
+    tunerNeedle.style.left=pct+'%'; tunerNeedle.classList.toggle('in-tune',inTune);
+    tunerStatus.textContent=inTune?'In tune!':cents<0?'Tune up':'Tune down';
+    document.querySelectorAll('.tuner-string-btn').forEach(el=>{
+      const idx=parseInt(el.dataset.idx,10),isTarget=STRINGS_TUNER[idx]===target;
+      el.classList.toggle('target',isTarget); el.classList.toggle('in-tune',isTarget&&inTune);
+    });
+  }
+
+  // ── Strumming panel ──────────────────────────────────────────
+  function renderStrummingPanel(){
+    exList.innerHTML='';
+    const mount=document.createElement('div');
+    mount.id='strumPlayerMount';
+    exList.appendChild(mount);
+    setTimeout(()=>initStrumPlayer('strumPlayerMount'),10);
+  }
+
+  // ── Soloing panel ────────────────────────────────────────────
+  function renderSoloingPanel(def){
+    exList.innerHTML='';
+    const btLabel=document.createElement('span'); btLabel.className='choice-panel-label'; btLabel.textContent='Step 1 — Find a backing track'; exList.appendChild(btLabel);
+    const btHint=document.createElement('div'); btHint.className='choice-hint'; btHint.textContent=def.hint; exList.appendChild(btHint);
+    const btLink=document.createElement('a'); btLink.href=def.bandcamp; btLink.target='_blank'; btLink.rel='noopener'; btLink.className='bt-link';
+    btLink.innerHTML='<div class="bt-left"><span class="bt-icon">&#127925;</span><span><span class="bt-name">Open Backing Tracks</span><span class="bt-tag">Easy Backing Tracks · Opens in new window</span></span></div><span class="bt-arrow">&#8599;</span>';
+    exList.appendChild(btLink);
+    const step2=document.createElement('span'); step2.className='choice-panel-label'; step2.style.marginTop='.5rem'; step2.textContent='Step 2 — Pick your key and scale'; exList.appendChild(step2);
+    const feedback=document.createElement('div'); feedback.style.cssText='font-family:"DM Mono",monospace;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-light);text-align:center;padding:.5rem;margin-bottom:.5rem;min-height:1.4em;'; feedback.textContent='Pick a key and scale — fretboard lights instantly'; exList.appendChild(feedback);
+    soloFeedbackEl=feedback;
+    def.groups.forEach(group=>{
+      const grpEl=document.createElement('div'); grpEl.className='solo-group';
+      const hd=document.createElement('div'); hd.className='solo-group-head';
+      hd.innerHTML='<span class="solo-key">'+group.key+'</span><span class="solo-key-desc">'+group.desc+'</span>';
+      grpEl.appendChild(hd);
+      const row=document.createElement('div'); row.className='solo-scale-row';
+      group.choices.forEach(ch=>{
+        const btn=document.createElement('button'); btn.className='solo-scale-btn';
+        const sn=ch.name.split(' — ')[1]||ch.name;
+        btn.innerHTML='<span class="ssb-name">'+sn+'</span><span class="ssb-desc">'+ch.desc+'</span>';
+        btn.addEventListener('click',()=>{ document.querySelectorAll('.solo-scale-btn').forEach(b=>b.style.borderColor=''); btn.style.borderColor='var(--green)'; lightScaleOnFretboard(ch.name); });
+        row.appendChild(btn);
+      });
+      grpEl.appendChild(row); exList.appendChild(grpEl);
+    });
+    const vl=document.createElement('div'); vl.style.cssText='text-align:center;margin-top:1rem;';
+    vl.innerHTML='<a href="vizi.html" style="font-family:DM Mono,monospace;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);text-decoration:none">Ask Vizi for guidance →</a>';
+    exList.appendChild(vl);
+    const hr=document.createElement('hr'); hr.className='tab-divider'; exList.appendChild(hr);
+    buildTabReader(exList);
+  }
+
+  // ── Tab reader ───────────────────────────────────────────────
+  let tabGroups=[],tabStepIdx=0,tabAutoTimer=null,tabAutoPlaying=false,tabSpeedMs=800;
+
+  function buildTabReader(container){
+    const sec=document.createElement('div'); sec.className='tab-reader-section';
+    sec.innerHTML='<div class="tab-reader-header"><span class="tab-reader-icon">&#127928;</span><div><div class="tab-reader-title">Tab Reader</div><div class="tab-reader-sub">Paste ASCII tab — Vizi lights each note on your fretboard</div></div></div>';
+    const ta=document.createElement('textarea'); ta.className='tab-input'; ta.rows=6;
+    ta.placeholder='Paste 6-line ASCII tab here...\ne|--0---2-|\nB|--1---3-|\nG|--0---2-|\nD|--------|\nA|--------|\nE|--------|';
+    sec.appendChild(ta);
+    const acts=document.createElement('div'); acts.className='tab-actions';
+    const pBtn=document.createElement('button'); pBtn.className='tab-btn primary'; pBtn.textContent='Parse Tab';
+    const cBtn=document.createElement('button'); cBtn.className='tab-btn'; cBtn.textContent='Clear';
+    acts.appendChild(pBtn); acts.appendChild(cBtn); sec.appendChild(acts);
+    const nr=document.createElement('div'); nr.className='tab-notes-row';
+    nr.innerHTML='<div class="tab-notes-box"><div class="tab-notes-label">Fret tokens</div><div class="tab-notes-content" id="tabTokensOut">—</div></div><div class="tab-notes-box"><div class="tab-notes-label">Note names</div><div class="tab-notes-content" id="tabNotesOut">—</div></div>';
+    sec.appendChild(nr);
+    const sw=document.createElement('div'); sw.id='tabStepperWrap'; sw.style.display='none';
+    sw.innerHTML='<div class="tab-stepper"><button class="tab-step-btn" id="tabPrevBtn">&#8249;</button><div class="tab-step-info"><span class="tab-step-note" id="tabStepNote">—</span><span class="tab-step-pos" id="tabStepPos">step 0 of 0</span></div><button class="tab-step-btn" id="tabNextBtn">&#8250;</button></div><div class="tab-auto-row"><button class="tab-auto-btn" id="tabAutoBtn">&#9654; Auto-play</button></div><div class="tab-speed-row"><span class="tab-speed-label">Speed</span><input type="range" class="tab-speed-slider" id="tabSpeedSlider" min="200" max="2000" value="800" step="100"/><span class="tab-speed-val" id="tabSpeedVal">800ms</span></div><div class="tab-fret-status" id="tabFretStatus">Parse a tab to begin</div>';
+    sec.appendChild(sw); container.appendChild(sec);
+
+    pBtn.addEventListener('click',()=>{
+      const raw=ta.value.trim(); if(!raw)return;
+      tabGroups=parseAsciiTab(raw);
+      if(!tabGroups.length){document.getElementById('tabTokensOut').textContent='No notes found';return;}
+      document.getElementById('tabTokensOut').textContent=tabGroups.map(a=>a.length===1?a[0]:'('+a.join(',')+')').join('  ');
+      document.getElementById('tabNotesOut').textContent=tabGroups.map(a=>a.map(tokenToNote).join('+')).join('  ');
+      tabStepIdx=0; stopTabAuto(); sw.style.display='block'; updateTabStepper(); sendTabStep();
+    });
+    cBtn.addEventListener('click',()=>{
+      ta.value=''; tabGroups=[]; tabStepIdx=0; stopTabAuto();
+      document.getElementById('tabTokensOut').textContent='—';
+      document.getElementById('tabNotesOut').textContent='—';
+      sw.style.display='none';
+    });
+    sw.querySelector('#tabPrevBtn').addEventListener('click',()=>{if(tabStepIdx>0){tabStepIdx--;updateTabStepper();sendTabStep();}});
+    sw.querySelector('#tabNextBtn').addEventListener('click',()=>{if(tabStepIdx<tabGroups.length-1){tabStepIdx++;updateTabStepper();sendTabStep();}});
+    sw.querySelector('#tabAutoBtn').addEventListener('click',()=>{tabAutoPlaying?stopTabAuto():startTabAuto();});
+    sw.querySelector('#tabSpeedSlider').addEventListener('input',e=>{tabSpeedMs=parseInt(e.target.value);sw.querySelector('#tabSpeedVal').textContent=tabSpeedMs+'ms';if(tabAutoPlaying){stopTabAuto();startTabAuto();}});
+  }
+
+  function updateTabStepper(){
+    if(!tabGroups.length)return;
+    const g=tabGroups[tabStepIdx];
+    const el=document.getElementById('tabStepNote'),pos=document.getElementById('tabStepPos');
+    const prev=document.getElementById('tabPrevBtn'),next=document.getElementById('tabNextBtn');
+    if(el)el.textContent=g.map(tokenToNote).join(', ');
+    if(pos)pos.textContent='step '+(tabStepIdx+1)+' of '+tabGroups.length;
+    if(prev)prev.disabled=(tabStepIdx===0);
+    if(next)next.disabled=(tabStepIdx===tabGroups.length-1);
+  }
+
+  async function sendTabStep(){
+    if(!tabGroups.length)return;
+    const g=tabGroups[tabStepIdx];
+    const sEl=document.getElementById('tabFretStatus');
+    const strMap={He:'HiE',B:'B',G:'G',D:'D',A:'A',Le:'LoE'};
+    // Build pipe-delimited command for all simultaneous notes
+    const cmds=g.map(t=>{
+      const m=t.match(/^S(He|B|G|D|A|Le)(\d+)$/);
+      if(!m)return null;
+      return 'SF '+strMap[m[1]]+' '+m[2];
+    }).filter(Boolean);
+    if(!cmds.length)return;
+    const cmd=cmds.join(' | ');
+    const noteNames=g.map(tokenToNote).join('+');
+    if(sEl){sEl.textContent='Sending...';sEl.style.color='var(--gold)';}
+    try{
+      const res=await fetch(RAILWAY_URL+'/fretboard-command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});
+      if(res.ok){if(sEl){sEl.textContent=noteNames+' — lit';sEl.style.color='var(--green)';}}
+      else{if(sEl){sEl.textContent='Could not reach fretboard';sEl.style.color='var(--red)';}}
+    }catch(e){if(sEl){sEl.textContent='Could not reach fretboard';sEl.style.color='var(--red)';}}
+  }
+
+  function startTabAuto(){
+    if(!tabGroups.length)return;
+    tabAutoPlaying=true;
+    const btn=document.getElementById('tabAutoBtn');
+    if(btn){btn.textContent='■ Stop';btn.classList.add('playing');}
+    function step(){
+      if(!tabAutoPlaying)return;
+      updateTabStepper();sendTabStep();
+      if(tabStepIdx<tabGroups.length-1){tabStepIdx++;tabAutoTimer=setTimeout(step,tabSpeedMs);}
+      else{stopTabAuto();}
+    }
+    step();
+  }
+  function stopTabAuto(){
+    tabAutoPlaying=false;clearTimeout(tabAutoTimer);
+    const btn=document.getElementById('tabAutoBtn');
+    if(btn){btn.textContent='▶ Auto-play';btn.classList.remove('playing');}
+  }
+
+  // ── Tab parser ───────────────────────────────────────────────
+  const LABEL_TO_CODE_TAB={'e':'He','b':'B','g':'G','d':'D','a':'A','E':'Le'};
+  const OPEN_SEMI={'He':4,'B':11,'G':7,'D':2,'A':9,'Le':4};
+  const NOTE_NAMES_TAB=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  function tokenToNote(t){const m=t.match(/^S(He|B|G|D|A|Le)(\d+)$/);if(!m)return'?';return NOTE_NAMES_TAB[(OPEN_SEMI[m[1]]+parseInt(m[2]))%12];}
+  function parseAsciiTab(text){
+    const lines=text.replace(/\r\n/g,'\n').split('\n');
+    const blocks=[];let i=0;
+    function isStr(l){return /^[eEbBgGdDaA]\s*\|/.test(l);}
+    while(i<lines.length){
+      const block=[];let j=i;const exp=['e','B','G','D','A','E'];
+      for(let k=0;k<exp.length&&j<lines.length;){
+        const l=lines[j];if(!isStr(l)){j++;continue;}
+        if(l.trim().slice(0,1).toUpperCase()===exp[k].toUpperCase()){block.push(l);k++;}j++;
+      }
+      if(block.length===6){blocks.push(block);i=j;}else{i++;}
+    }
+    const all=[];
+    for(const blk of blocks){
+      const rows=blk.map(l=>{const ix=l.indexOf('|');return{label:l.slice(0,ix).trim(),content:l.slice(ix+1)};});
+      const maxLen=Math.max(...rows.map(r=>r.content.length));
+      let col=0;
+      while(col<maxLen){
+        const notes=[];
+        for(let r=0;r<rows.length;r++){
+          const row=rows[r],c1=row.content[col]||'-',c2=row.content[col+1]||'',c3=row.content[col+2]||'';
+          if(/\d/.test(c1)){
+            let n=c1;if(/\d/.test(c2))n+=c2;if(/\d/.test(c3)&&n.length<3)n+=c3;
+            const fret=parseInt(n,10),raw=row.label.slice(0,1);
+            const code=raw==='e'?'He':raw==='E'?'Le':LABEL_TO_CODE_TAB[raw]||raw;
+            notes.push({code,fret});
+          }
+        }
+        if(notes.length>0){
+          const ord={He:0,B:1,G:2,D:3,A:4,Le:5};
+          notes.sort((a,b)=>ord[a.code]-ord[b.code]);
+          all.push(notes.map(n=>'S'+n.code+n.fret));
+          col+=Math.max(1,Math.max(...notes.map(n=>String(n.fret).length)));
+        }else{col++;}
+      }
+    }
+    return all;
+  }
+
+// ════════════════════════════════════════════════════════════
+// STRUM PLAYER
+// ════════════════════════════════════════════════════════════
+function initStrumPlayer(mountId){
+  const mount=document.getElementById(mountId);
+  if(!mount)return;
+  mount.innerHTML=`
+<div class="card">
+
+  <!-- Step 1 — Time signature -->
+  <div class="ts-header">
+    <span class="ts-header-label">Step 1 — Choose a time signature</span>
+    <div class="ts-tabs">
+      <div class="ts-tab active" data-ts="44">
+        <span class="ts-tab-sig">4/4</span>
+        <span class="ts-tab-name">Common</span>
+      </div>
+      <div class="ts-tab" data-ts="34">
+        <span class="ts-tab-sig">3/4</span>
+        <span class="ts-tab-name">Waltz</span>
+      </div>
+      <div class="ts-tab" data-ts="68">
+        <span class="ts-tab-sig">6/8</span>
+        <span class="ts-tab-name">Rolling</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Explainer -->
+  <div class="ts-explainer" id="tsExplainer"></div>
+
+  <!-- Foot tap visualizer -->
+  <div class="foot-tap-row">
+    <span class="foot-tap-label">Foot taps</span>
+    <div class="foot-taps" id="footTaps"></div>
+  </div>
+
+  <!-- Step 2 — Pattern -->
+  <div class="pattern-header">
+    <span class="pattern-header-label">Step 2 — Tap a pattern to select it</span>
+    <div class="pattern-tabs" id="patternTabs"></div>
+  </div>
+
+  <!-- Custom hint -->
+  <div class="custom-hint" id="customHint">
+    <div class="custom-hint-title">Build your own pattern</div>
+    <ul class="custom-hint-steps">
+      <li>
+        <span class="hint-badge down">↓</span>
+        <span>Tap once — sets a <strong>down</strong> stroke</span>
+      </li>
+      <li>
+        <span class="hint-badge up">↑</span>
+        <span>Tap again — sets an <strong>up</strong> stroke</span>
+      </li>
+      <li>
+        <span class="hint-badge skip"> </span>
+        <span>Tap again — clears the slot (silence)</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Static reference diagram -->
+  <div class="static-diagram-wrap">
+    <div class="static-diagram-label">Full pattern — study this shape</div>
+    <div class="static-diagram" id="staticDiagram"></div>
+  </div>
+
+  <!-- Animated grid -->
+  <div class="beat-grid-wrap">
+    <div class="beat-grid-label" id="gridLabel">Lights up as it plays</div>
+    <div class="beat-grid" id="beatGrid"></div>
+  </div>
+  <div class="legend">
+    <span><div class="leg-dot down"></div>Down ↓</span>
+    <span><div class="leg-dot up"></div>Up ↑</span>
+    <span><div class="leg-dot off"></div>Skip</span>
+  </div>
+
+  <!-- Beat indicator -->
+  <div class="beat-indicator" id="beatIndicator"></div>
+
+  <!-- Controls -->
+  <div class="controls">
+
+    <div class="ctrl-row">
+      <span class="ctrl-label">BPM</span>
+      <input type="range" class="bpm-slider" id="bpmSlider" min="40" max="160" value="70"/>
+      <span class="bpm-value" id="bpmValue">70 BPM</span>
+    </div>
+
+    <div class="ctrl-row">
+      <span class="ctrl-label">Duration</span>
+      <div class="pill-btns" id="feelBtns">
+        <button class="pill-btn" data-feel="0">Whole</button>
+        <button class="pill-btn" data-feel="-1">Half</button>
+        <button class="pill-btn" data-feel="1">Quarter</button>
+        <button class="pill-btn active-feel" data-feel="2">Eighth</button>
+      </div>
+    </div>
+
+    <div class="play-row">
+      <button class="play-btn" id="playBtn">▶</button>
+    </div>
+
+  </div>
+</div>
+
+`;
+// ═══════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════
+const TIME_SIGS = {
+  '44': {
+    beats: 4,
+    footLabels: ['1','2','3','4'],
+    explainerTitle: '4 beats per measure — the most common time in music',
+    explainerBody: 'Count: 1 – 2 – 3 – 4, then repeat. Your foot taps four times per measure. Beat 1 is the strongest. The vast majority of songs you know are in 4/4.',
+    songs: 'Wonderwall · Let Her Go · Brown Eyed Girl · almost everything else',
+    patterns: [
+      { label: 'DU DU DU DU', slots: ['D','U','D','U','D','U','D','U'] },
+      { label: 'D  DU UD  U', slots: ['D',' ','D','U','U','D',' ','U'] },
+      { label: 'D  DU  U DU', slots: ['D',' ','D','U',' ','U','D','U'] },
+      { label: 'Custom',      slots: [' ',' ',' ',' ',' ',' ',' ',' '], custom:true },
+    ]
+  },
+  '34': {
+    beats: 3,
+    footLabels: ['1','2','3'],
+    explainerTitle: '3 beats per measure — the waltz feel',
+    explainerBody: 'Count: 1 – 2 – 3, then repeat. Your foot taps three times. Beat 1 is strong, 2 and 3 are lighter. It has a gentle swaying quality — like rocking side to side.',
+    songs: 'Happy Birthday · Take Me Out to the Ballroom · The Entertainer',
+    patterns: [
+      { label: 'D  DU DU', slots: ['D',' ','D','U','D','U'] },
+      { label: 'D  D  D',  slots: ['D',' ','D',' ','D',' '] },
+      { label: 'Custom',   slots: [' ',' ',' ',' ',' ',' '], custom:true },
+    ]
+  },
+  '68': {
+    beats: 6,
+    footLabels: ['ONE – and – a','TWO – and – a'],
+    explainerTitle: '6 notes per measure — but your foot only taps twice',
+    explainerBody: 'There are 6 eighth notes but they split into two groups of three. Your foot taps on note 1 and note 4 — so you feel 2 big beats, each with a triplet lilt. Say it out loud: ONE-and-a, TWO-and-a.',
+    songs: 'House of the Rising Sun · Nothing Else Matters · We Are the Champions',
+    patterns: [
+      { label: 'DUD DUD', slots: ['D','U','D','D','U','D'], groups:[[0,1,2],[3,4,5]] },
+      { label: 'D D D D', slots: ['D',' ','D','D',' ','D'], groups:[[0,1,2],[3,4,5]] },
+      { label: 'Custom',  slots: [' ',' ',' ',' ',' ',' '], groups:[[0,1,2],[3,4,5]], custom:true },
+    ]
+  }
+};
+
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+let currentTS = '44';
+let currentPatternIdx = 0;
+let slots = [];
+let bpm = 70;
+let subdivisions = 2;
+let isPlaying = false;
+let currentSlot = -1;
+let schedulerTimer = null;
+let audioCtx = null;
+let nextNoteTime = 0;
+let currentSlotIndex = 0;
+const SCHEDULE_AHEAD = 0.1;
+const TICK_INTERVAL = 25;
+
+function isCustom(){ return !!TIME_SIGS[currentTS].patterns[currentPatternIdx].custom; }
+
+// ═══════════════════════════════════════════════════
+// AUDIO
+// ═══════════════════════════════════════════════════
+function getAudioCtx(){
+  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if (audioCtx.state==='suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playStrum(time, type, isDownbeat){
+  const ctx = getAudioCtx();
+  const freqs = type==='D' ? [82,110,147,196,247,330] : [330,247,196,147,110,82];
+  freqs.forEach((freq,i)=>{
+    const delay = (i/freqs.length)*0.018;
+    const osc = ctx.createOscillator();
+    const bpf = ctx.createBiquadFilter();
+    const g   = ctx.createGain();
+    osc.connect(bpf); bpf.connect(g); g.connect(ctx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, time+delay);
+    osc.detune.setValueAtTime((Math.random()-.5)*10, time+delay);
+    bpf.type = 'bandpass';
+    bpf.frequency.setValueAtTime(freq*1.6, time+delay);
+    bpf.Q.setValueAtTime(2.8, time+delay);
+    const vel = isDownbeat ? 0.26 : (type==='D' ? 0.17 : 0.13);
+    g.gain.setValueAtTime(0, time+delay);
+    g.gain.linearRampToValueAtTime(vel, time+delay+0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, time+delay+0.3);
+    osc.start(time+delay); osc.stop(time+delay+0.35);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// SCHEDULER
+// ═══════════════════════════════════════════════════
+function secPerSlot(){
+  if (currentTS==='68') return 60/bpm/3;
+  if (subdivisions===0)  return 60/bpm * TIME_SIGS[currentTS].beats; // whole = full measure
+  if (subdivisions===-1) return 60/bpm * (TIME_SIGS[currentTS].beats/2); // half
+  if (subdivisions===1)  return 60/bpm;       // quarter
+  return 60/bpm/2;                            // eighth
+}
+
+function scheduleNotes(){
+  const ctx = getAudioCtx();
+  while (nextNoteTime < ctx.currentTime+SCHEDULE_AHEAD){
+    const idx = currentSlotIndex % slots.length;
+    const val = slots[idx];
+    const isDownbeat = currentTS==='68' ? (idx===0||idx===3) : (idx===0);
+    if (val==='D'||val==='U') playStrum(nextNoteTime, val, isDownbeat);
+    const cap = idx, capT = nextNoteTime;
+    const delay = Math.max(0,(capT-ctx.currentTime)*1000);
+    setTimeout(()=>{ if (!isPlaying) return; currentSlot=cap; updateHighlights(); }, delay);
+    nextNoteTime += secPerSlot();
+    currentSlotIndex++;
+  }
+}
+
+function startScheduler(){
+  const ctx = getAudioCtx();
+  nextNoteTime = ctx.currentTime+0.05;
+  currentSlotIndex = 0;
+  schedulerTimer = setInterval(scheduleNotes, TICK_INTERVAL);
+}
+
+function stopScheduler(){
+  clearInterval(schedulerTimer); schedulerTimer=null;
+  currentSlot=-1; updateHighlights();
+}
+
+function stopPlayback(){
+  if (!isPlaying) return;
+  isPlaying=false; stopScheduler();
+  const btn = document.getElementById('playBtn');
+  btn.textContent='▶'; btn.classList.remove('playing'); btn.disabled=false;
+}
+
+// ═══════════════════════════════════════════════════
+// HIGHLIGHTS
+// ═══════════════════════════════════════════════════
+function updateHighlights(){
+  document.querySelectorAll('.stroke-slot').forEach(el=>{
+    el.classList.toggle('active-beat', parseInt(el.dataset.idx)===currentSlot);
+  });
+  const dots = document.querySelectorAll('.beat-dot');
+  dots.forEach((dot,i)=>{
+    dot.classList.remove('active','downbeat');
+    const slotsPerBt = subdivisions<=0?1:subdivisions===1?1:2;
+    const beatIdx = currentTS==='68' ? (currentSlot<3?0:1)
+                  : subdivisions===0  ? 0
+                  : subdivisions===-1 ? currentSlot
+                  : Math.floor(currentSlot/slotsPerBt);
+    if (i===beatIdx) dot.classList.add(beatIdx===0?'downbeat':'active');
+  });
+  const taps = document.querySelectorAll('.foot-tap');
+  taps.forEach(t=>t.classList.remove('active','downbeat'));
+  if (currentSlot>=0){
+    const slotsPerFt = subdivisions<=0?1:subdivisions===1?1:2;
+    const ti = currentTS==='68' ? (currentSlot<3?0:1)
+             : subdivisions===0  ? 0
+             : subdivisions===-1 ? currentSlot
+             : Math.floor(currentSlot/slotsPerFt);
+    if (taps[ti]) taps[ti].classList.add(ti===0?'downbeat':'active');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER HELPERS
+// ═══════════════════════════════════════════════════
+function renderExplainer(){
+  const ts = TIME_SIGS[currentTS];
+  document.getElementById('tsExplainer').innerHTML =
+    '<div class="ts-explainer-title">'+ts.explainerTitle+'</div>'+
+    '<div class="ts-explainer-body">'+ts.explainerBody+'</div>'+
+    '<span class="ts-explainer-songs">🎸 '+ts.songs+'</span>';
+}
+
+function renderFootTaps(){
+  const container = document.getElementById('footTaps');
+  container.innerHTML = '';
+  TIME_SIGS[currentTS].footLabels.forEach(label=>{
+    const el = document.createElement('div');
+    el.className='foot-tap'; el.textContent=label;
+    container.appendChild(el);
+  });
+}
+
+function renderPatternTabs(){
+  const ts = TIME_SIGS[currentTS];
+  const container = document.getElementById('patternTabs');
+  container.innerHTML = '';
+  ts.patterns.forEach((pat,i)=>{
+    const btn = document.createElement('button');
+    btn.className = 'pattern-tab'+(pat.custom?' custom-tab':'')+(i===currentPatternIdx?' active':'');
+    btn.textContent = pat.label;
+    btn.addEventListener('click',()=>{
+      if (pat.custom) stopPlayback();
+      currentPatternIdx=i;
+      slots=[...ts.patterns[i].slots];
+      syncSlotsLength();
+      renderPatternTabs();
+      renderCustomHint();
+      renderStaticDiagram();
+      buildGrid();
+      updatePlayBtn();
+    });
+    container.appendChild(btn);
+  });
+}
+
+function renderCustomHint(){
+  document.getElementById('customHint').classList.toggle('show', isCustom());
+  document.getElementById('gridLabel').textContent = isCustom()
+    ? 'Tap each slot to set it — then hit play'
+    : 'Lights up as it plays';
+}
+
+function makeStaticStroke(val){
+  const el = document.createElement('div');
+  el.className = 'static-stroke '+(val==='D'?'down':val==='U'?'up':'skip');
+  el.textContent = val==='D'?'D':val==='U'?'U':' ';
+  return el;
+}
+
+function renderStaticDiagram(){
+  const ts = TIME_SIGS[currentTS];
+  const pat = ts.patterns[currentPatternIdx];
+  const container = document.getElementById('staticDiagram');
+  container.innerHTML = '';
+
+  if (currentTS==='68'){
+    const groups = pat.groups||[[0,1,2],[3,4,5]];
+    ['ONE – and – a','TWO – and – a'].forEach((lbl,gi)=>{
+      const grp = document.createElement('div'); grp.className='group-bracket';
+      const lblEl = document.createElement('div'); lblEl.className='bracket-label'; lblEl.textContent=lbl;
+      grp.appendChild(lblEl);
+      const strokes = document.createElement('div'); strokes.className='bracket-strokes';
+      groups[gi].forEach(idx=>strokes.appendChild(makeStaticStroke(slots[idx]||' ')));
+      grp.appendChild(strokes); container.appendChild(grp);
+      if (gi<1){ const div=document.createElement('div'); div.className='static-divider'; container.appendChild(div); }
+    });
+  } else {
+    for (let b=0; b<ts.beats; b++){
+      const cell=document.createElement('div'); cell.className='static-beat';
+      const num=document.createElement('div'); num.className='static-beat-num'; num.textContent=b+1;
+      cell.appendChild(num);
+      const grp=document.createElement('div'); grp.className='static-beat-group';
+      for (let s=0; s<subdivisions; s++) grp.appendChild(makeStaticStroke(slots[b*subdivisions+s]||' '));
+      cell.appendChild(grp); container.appendChild(cell);
+      if (b<ts.beats-1){ const div=document.createElement('div'); div.className='static-divider'; container.appendChild(div); }
+    }
+  }
+}
+
+function buildGrid(){
+  const ts = TIME_SIGS[currentTS];
+  const grid = document.getElementById('beatGrid');
+  grid.innerHTML = '';
+  const editable = isCustom();
+
+  function makeSlot(idx){
+    const val = slots[idx]||' ';
+    const slot = document.createElement('div');
+    const cls = val==='D'?'down':val==='U'?'up':'';
+    slot.className = 'stroke-slot'+(cls?' '+cls:'')+(editable?' editable':' locked');
+    slot.dataset.idx = idx;
+    slot.textContent = val==='D'?'↓':val==='U'?'↑':' ';
+    if (editable){
+      slot.addEventListener('click',()=>{
+        const cur=slots[idx]||' ';
+        slots[idx]=cur===' '?'D':cur==='D'?'U':' ';
+        const v=slots[idx];
+        slot.className='stroke-slot'+(v==='D'?' down':v==='U'?' up':'')+' editable';
+        slot.textContent=v==='D'?'↓':v==='U'?'↑':' ';
+        renderStaticDiagram();
+        updatePlayBtn();
+      });
+    }
+    return slot;
+  }
+
+  if (currentTS==='68'){
+    [[0,1,2],[3,4,5]].forEach((grpIndices,gi)=>{
+      const cell=document.createElement('div'); cell.className='beat-cell';
+      const num=document.createElement('div'); num.className='beat-number';
+      num.textContent=gi===0?'ONE – and – a':'TWO – and – a'; num.style.fontSize='.44rem';
+      cell.appendChild(num);
+      const strokes=document.createElement('div'); strokes.className='beat-strokes';
+      grpIndices.forEach(idx=>strokes.appendChild(makeSlot(idx)));
+      cell.appendChild(strokes); grid.appendChild(cell);
+    });
+  } else {
+    // slotsPerBeat: whole=all in 1 cell, half=2 cells total, quarter=1/beat, eighth=2/beat
+    const slotsPerBeat = subdivisions===0 ? 0
+                       : subdivisions===-1 ? 0
+                       : subdivisions===1  ? 1
+                       : 2; // eighth
+    if (subdivisions===0){
+      // Whole note — one single cell spanning all beats
+      const cell=document.createElement('div'); cell.className='beat-cell';
+      cell.style.flex='4';
+      const num=document.createElement('div'); num.className='beat-number'; num.textContent='1 — whole note';
+      cell.appendChild(num);
+      const strokes=document.createElement('div'); strokes.className='beat-strokes';
+      strokes.appendChild(makeSlot(0));
+      cell.appendChild(strokes); grid.appendChild(cell);
+    } else if (subdivisions===-1){
+      // Half notes — two cells
+      for (let h=0; h<2; h++){
+        const cell=document.createElement('div'); cell.className='beat-cell'; cell.style.flex='2';
+        const num=document.createElement('div'); num.className='beat-number';
+        num.textContent = h===0?'1-2':'3-4';
+        cell.appendChild(num);
+        const strokes=document.createElement('div'); strokes.className='beat-strokes';
+        strokes.appendChild(makeSlot(h));
+        cell.appendChild(strokes); grid.appendChild(cell);
+      }
+    } else {
+      for (let b=0; b<ts.beats; b++){
+        const cell=document.createElement('div'); cell.className='beat-cell';
+        const num=document.createElement('div'); num.className='beat-number'; num.textContent=b+1;
+        cell.appendChild(num);
+        const strokes=document.createElement('div'); strokes.className='beat-strokes';
+        for (let s=0; s<slotsPerBeat; s++) strokes.appendChild(makeSlot(b*slotsPerBeat+s));
+        cell.appendChild(strokes); grid.appendChild(cell);
+      }
+    }
+  }
+  buildBeatIndicator();
+}
+
+function buildBeatIndicator(){
+  const container = document.getElementById('beatIndicator');
+  container.innerHTML = '';
+  const count = currentTS==='68' ? 2
+              : subdivisions===0  ? 1
+              : subdivisions===-1 ? 2
+              : TIME_SIGS[currentTS].beats;
+  for (let i=0; i<count; i++){
+    const dot=document.createElement('div'); dot.className='beat-dot'; container.appendChild(dot);
+  }
+}
+
+function updatePlayBtn(){
+  const btn = document.getElementById('playBtn');
+  if (isCustom()){
+    btn.disabled = !slots.some(s=>s==='D'||s==='U');
+  } else {
+    btn.disabled = false;
+  }
+}
+
+function syncSlotsLength(){
+  // slots per measure by duration:
+  // whole=1, half=2, quarter=beats, eighth=beats*2
+  let needed;
+  if (currentTS==='68'){
+    needed = 6; // 6/8 always 6 eighth notes
+  } else {
+    const beats = TIME_SIGS[currentTS].beats;
+    if      (subdivisions===0)  needed = 1;           // whole note
+    else if (subdivisions===-1) needed = 2;           // half notes
+    else if (subdivisions===1)  needed = beats;       // quarter notes
+    else                        needed = beats * 2;   // eighth notes (default)
+  }
+  while (slots.length<needed) slots.push(' ');
+  while (slots.length>needed) slots.pop();
+}
+
+function renderAll(){
+  slots = [...TIME_SIGS[currentTS].patterns[currentPatternIdx].slots];
+  syncSlotsLength();
+  renderExplainer();
+  renderFootTaps();
+  renderPatternTabs();
+  renderCustomHint();
+  renderStaticDiagram();
+  buildGrid();
+  updatePlayBtn();
+}
+
+// ═══════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════
+document.querySelectorAll('.ts-tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    stopPlayback();
+    document.querySelectorAll('.ts-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTS=tab.dataset.ts; currentPatternIdx=0;
+    renderAll();
+  });
+});
+
+document.getElementById('playBtn').addEventListener('click',()=>{
+  if (isPlaying){ stopPlayback(); }
+  else {
+    isPlaying=true; startScheduler();
+    const btn=document.getElementById('playBtn');
+    btn.textContent='■'; btn.classList.add('playing');
+  }
+});
+
+document.getElementById('bpmSlider').addEventListener('input',e=>{
+  bpm=parseInt(e.target.value);
+  document.getElementById('bpmValue').textContent=bpm+' BPM';
+});
+
+document.querySelectorAll('[data-feel]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const feel = parseInt(btn.dataset.feel);
+    // feel: 0=whole(1 slot/measure), -1=half(2 slots), 1=quarter(4 slots), 2=eighth(8 slots)
+    // Reload preset slots fresh for new duration — no scaling needed
+    if (!isCustom()){
+      const ts = TIME_SIGS[currentTS];
+      // Reset to preset default then let syncSlotsLength pad/trim
+      slots = [...ts.patterns[currentPatternIdx].slots];
+    }
+    document.querySelectorAll('[data-feel]').forEach(b=>b.classList.remove('active-feel'));
+    btn.classList.add('active-feel');
+    subdivisions = feel===0 ? 0 : feel===-1 ? -1 : feel;
+    syncSlotsLength(); renderPatternTabs(); renderCustomHint();
+    renderStaticDiagram(); buildGrid(); updatePlayBtn();
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+renderAll();
+
+  renderAll();
+} // end initStrumPlayer
+
+
+
+  // Metronome handled by shared floating widget — see metronome-widget.js
+
+})(); // end IIFE
+</script>
+<script src="metronome-widget.js"></script>
+</body>
+</html>
