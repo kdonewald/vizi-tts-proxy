@@ -96,9 +96,11 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const YOUTUBE_API_KEY   = process.env.YOUTUBE_API_KEY;
 const VOICE_NAME        = process.env.VOICE_NAME    || 'en-US-Neural2-F';
 const LANGUAGE_CODE     = 'en-US';
-const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT || 'You are Vizi, an AI guitar tutor.';
-const REMINDER_PROMPT   = process.env.REMINDER_PROMPT || '';
-const SONG_PROMPT       = process.env.SONG_PROMPT   || '';
+const SYSTEM_PROMPT       = process.env.SYSTEM_PROMPT       || 'You are Vizi, an AI guitar tutor.';
+const REMINDER_PROMPT     = process.env.REMINDER_PROMPT     || '';
+const SONG_PROMPT         = process.env.SONG_PROMPT         || '';
+const STRUMMING_PROMPT    = process.env.STRUMMING_PROMPT    || '';
+const SOLOING_PROMPT      = process.env.SOLOING_PROMPT      || '';
 
 // ─── Pipe response parser ─────────────────────────────────────────────────────
 function parsePipeResponse(fullText) {
@@ -286,8 +288,10 @@ app.post('/claude-tts', (req, res) => {
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
   let systemText = SYSTEM_PROMPT;
-  if (mode === 'song' && SONG_PROMPT)       { systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT; }
-  else if (mode === 'talk' && REMINDER_PROMPT) { systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT; }
+  if      (mode === 'song'       && SONG_PROMPT)       { systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT; }
+  else if (mode === 'strumming'  && STRUMMING_PROMPT) { systemText = SYSTEM_PROMPT + '\n\n' + STRUMMING_PROMPT; }
+  else if (mode === 'soloing'    && SOLOING_PROMPT)   { systemText = SYSTEM_PROMPT + '\n\n' + SOLOING_PROMPT; }
+  else if (mode === 'talk'       && REMINDER_PROMPT)  { systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT; }
 
   getHistory();
   addToHistory('user', message);
@@ -412,8 +416,10 @@ app.post('/stt-claude-tts', async (req, res) => {
   let fullText = '';
   try {
     let systemText = SYSTEM_PROMPT;
-    if (mode === 'song' && SONG_PROMPT)          systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
-    else if (mode === 'talk' && REMINDER_PROMPT) systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
+    if      (mode === 'song'       && SONG_PROMPT)       systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
+    else if (mode === 'strumming'  && STRUMMING_PROMPT) systemText = SYSTEM_PROMPT + '\n\n' + STRUMMING_PROMPT;
+    else if (mode === 'soloing'    && SOLOING_PROMPT)   systemText = SYSTEM_PROMPT + '\n\n' + SOLOING_PROMPT;
+    else if (mode === 'talk'       && REMINDER_PROMPT)  systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
 
     getHistory();
     addToHistory('user', transcript.trim());
@@ -564,8 +570,10 @@ app.post('/claude', (req, res) => {
   message = message.replace(/[\r\n]+/g, ' ').trim();
 
   let systemText = SYSTEM_PROMPT;
-  if (mode === 'song' && SONG_PROMPT)          systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
-  else if (mode === 'talk' && REMINDER_PROMPT) systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
+  if      (mode === 'song'       && SONG_PROMPT)       systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
+  else if (mode === 'strumming'  && STRUMMING_PROMPT) systemText = SYSTEM_PROMPT + '\n\n' + STRUMMING_PROMPT;
+  else if (mode === 'soloing'    && SOLOING_PROMPT)   systemText = SYSTEM_PROMPT + '\n\n' + SOLOING_PROMPT;
+  else if (mode === 'talk'       && REMINDER_PROMPT)  systemText = SYSTEM_PROMPT + '\n\n' + REMINDER_PROMPT;
 
   getHistory();
   addToHistory('user', message);
