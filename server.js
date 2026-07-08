@@ -65,7 +65,7 @@ function createSession(songTitle = '') {
   sessions[id] = {
     status: 'waiting', createdAt: Date.now(), songTitle,
     type: null, chords: [], progression: '', tabTokens: [],
-    rawText: '', capo: 0, key: '', strummingPattern: '', suggestedBpm: null, error: null
+    rawText: '', capo: 0, key: '', timeSignature: '', strummingPattern: '', suggestedBpm: null, error: null
   };
   return id;
 }
@@ -642,6 +642,7 @@ app.get('/session-prompt/:id', (req, res) => {
   const chords           = session.chords           || [];
   const capo             = session.capo             || 0;
   const key              = session.key              || '';
+  const timeSignature    = session.timeSignature    || '';
   const strummingPattern = session.strummingPattern || '';
   const suggestedBpm     = session.suggestedBpm;
   const chordList        = chords.length > 0 ? chords.join(', ') : 'various chords';
@@ -650,6 +651,7 @@ app.get('/session-prompt/:id', (req, res) => {
   if (progression) message += 'Full progression data: ' + progression + '. ';
   message += 'Unique chords in this song: ' + chordList + '. ';
   if (key) message += 'Estimated key: ' + key + '. ';
+  if (timeSignature) message += 'Time signature: ' + timeSignature + '. ';
   if (strummingPattern) message += 'Suggested strumming pattern: ' + strummingPattern + '. ';
   if (suggestedBpm) message += 'Suggested metronome tempo: ' + suggestedBpm + ' BPM. ';
   if (capo > 0) message += 'Capo is on fret ' + capo + '. ';
@@ -707,7 +709,7 @@ async function handleSongUpload(req, res) {
     session.progression = parsed.progression || ''; session.tabTokens = parsed.tabTokens || [];
     session.rawText = parsed.rawText || ''; session.songTitle = parsed.songTitle || session.songTitle;
     session.capo = parsed.capo || 0;
-    session.key = parsed.key || ''; session.strummingPattern = parsed.strummingPattern || ''; session.suggestedBpm = normalizeBpm(parsed.suggestedBpm);
+    session.key = parsed.key || ''; session.timeSignature = parsed.timeSignature || '4/4'; session.strummingPattern = parsed.strummingPattern || ''; session.suggestedBpm = normalizeBpm(parsed.suggestedBpm);
     session.status = 'ready';
 
     res.json({ status: 'ready', sessionId: id, type: session.type, chords: session.chords, progression: session.progression, message: 'Song uploaded successfully. Vizi is ready!' });
@@ -721,11 +723,12 @@ function buildAnalysisPrompt(songTitle) {
   return `Analyze this image of sheet music, a chord chart, or guitar tab.
 ${songTitle ? `The song is "${songTitle}".` : ''}
 Return ONLY this JSON structure (no markdown, no explanation):
-{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"any text you extracted"}
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"any text you extracted"}
 RULES:
 - "type" must be "chords", "tab", or "mixed"
 - "capo" must be a number — 0 if no capo
 - "key" is your best-guess overall key of the song (e.g. "G major", "A minor"), based on the chords and progression
+- "timeSignature" is your best-guess time signature (e.g. "4/4", "3/4", "6/8") — default to "4/4" if you cannot determine it, since that's overwhelmingly the most common
 - "strummingPattern" must be exactly one of these five, chosen for the best feel match: "Pattern 1 — All Down", "Pattern 2 — Down Up", "Pattern 3 — Common Pop Rock", "Pattern 4 — Reggae Skank", "Pattern 5 — Ballad"
 - "suggestedBpm" is a single number — your best estimate of the song's tempo, typically between 60 and 140
 - "chords" must use standard chord names
@@ -740,12 +743,13 @@ ${songTitle ? `The song is "${songTitle}".` : ''}
 TEXT:
 ${text}
 Return ONLY this JSON structure (no markdown, no explanation):
-{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"${text.replace(/"/g, "'").slice(0, 200)}"}
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"${text.replace(/"/g, "'").slice(0, 200)}"}
 RULES:
 - "type" must be "chords", "tab", or "mixed"
 - "chords" must list every unique chord used
 - "capo" must be a number — 0 if no capo
 - "key" is your best-guess overall key of the song (e.g. "G major", "A minor"), based on the chords and progression
+- "timeSignature" is your best-guess time signature (e.g. "4/4", "3/4", "6/8") — default to "4/4" if you cannot determine it, since that's overwhelmingly the most common
 - "strummingPattern" must be exactly one of these five, chosen for the best feel match: "Pattern 1 — All Down", "Pattern 2 — Down Up", "Pattern 3 — Common Pop Rock", "Pattern 4 — Reggae Skank", "Pattern 5 — Ballad"
 - "suggestedBpm" is a single number — your best estimate of the song's tempo, typically between 60 and 140
 - "tabTokens" only for tab sections. String codes: He=high E, B, G, D, A, Le=low E`;
@@ -777,7 +781,7 @@ function callClaudeAPI(claudeBody) {
 function parseClaudeAnalysis(text) {
   const clean = text.replace(/```json|```/g, '').trim();
   try { return JSON.parse(clean); }
-  catch(e) { return { type: 'chords', chords: [], progression: '', tabTokens: [], rawText: text, key: '', strummingPattern: '', suggestedBpm: null }; }
+  catch(e) { return { type: 'chords', chords: [], progression: '', tabTokens: [], rawText: text, key: '', timeSignature: '4/4', strummingPattern: '', suggestedBpm: null }; }
 }
 
 // Safely coerce whatever Claude returns for suggestedBpm into a clean integer, or null if invalid.
