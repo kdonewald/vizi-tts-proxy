@@ -630,6 +630,17 @@ app.get('/session-status/:id', (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found', id });
   res.json({ sessionId: id, status: session.status, songTitle: session.songTitle, type: session.type, chords: session.chords, progression: session.progression, tabTokens: session.tabTokens, error: session.error });
 });
+// Matches the pattern reference in the Strumming prompt exactly — used so Song Mode
+// can both speak the down/up motion and render a visual arrow/count display,
+// rather than relying on a bare pattern name the student may not have learned yet.
+const STRUM_PATTERNS = {
+  'Pattern 1 — All Down':        { name: 'All Down',        arrows: '↓ ↓ ↓ ↓',     counts: '1 2 3 4',           spoken: 'down, down, down, down' },
+  'Pattern 2 — Down Up':         { name: 'Down Up',         arrows: '↓ ↑ ↓ ↑',     counts: '1 and 2 and',       spoken: 'down, up, down, up' },
+  'Pattern 3 — Common Pop Rock': { name: 'Common Pop Rock', arrows: '↓ ↓ ↑ ↑ ↓ ↑', counts: '1 2 and and 4 and', spoken: 'down, down, up, up, down, up' },
+  'Pattern 4 — Reggae Skank':    { name: 'Reggae Skank',    arrows: '✗ ↑ ✗ ↑',     counts: '1 and 2 and',       spoken: 'skip, up, skip, up' },
+  'Pattern 5 — Ballad':          { name: 'Ballad',          arrows: '↓ ↓ ↑ ↓ ↑',   counts: '1 2 and 3 and',     spoken: 'down, down, up, down, up' },
+};
+
 app.get('/session-prompt/:id', (req, res) => {
   const id = req.params.id.trim().toUpperCase();
   const session = sessions[id];
@@ -647,19 +658,30 @@ app.get('/session-prompt/:id', (req, res) => {
   const suggestedBpm     = session.suggestedBpm;
   const chordList        = chords.length > 0 ? chords.join(', ') : 'various chords';
 
+  const patternInfo = STRUM_PATTERNS[strummingPattern] || null;
+
   let message = 'SONG RECEIVED: ' + songTitle + '. ';
   if (progression) message += 'Full progression data: ' + progression + '. ';
   message += 'Unique chords in this song: ' + chordList + '. ';
   if (key) message += 'Estimated key: ' + key + '. ';
   if (timeSignature) message += 'Time signature: ' + timeSignature + '. ';
-  if (strummingPattern) message += 'Suggested strumming pattern: ' + strummingPattern + '. ';
+  if (patternInfo) {
+    message += 'Suggested strumming pattern: ' + patternInfo.name + ' — the motion is ' + patternInfo.spoken + '. ';
+    message += 'This exact pattern is shown visually on screen, and the student can practice it on the Strumming stage before coming back if they want to. ';
+  }
   if (suggestedBpm) message += 'Suggested metronome tempo: ' + suggestedBpm + ' BPM. ';
   if (capo > 0) message += 'Capo is on fret ' + capo + '. ';
   else          message += 'No capo for this song. ';
   if (type === 'tab' || type === 'mixed') message += 'This song also includes tab and melody sections. ';
   message += 'You now have this song loaded. Follow your Song Mode initial response rules exactly. Your spoken introduction must come first, then append the CAPO command as a pipe command at the very end of your response.';
 
-  res.json({ ready: true, sessionId: id, songTitle, message, mode: 'song' });
+  res.json({
+    ready: true, sessionId: id, songTitle, message, mode: 'song',
+    key: key || null,
+    timeSignature: timeSignature || null,
+    suggestedBpm: suggestedBpm || null,
+    strumPattern: patternInfo ? { name: patternInfo.name, arrows: patternInfo.arrows, counts: patternInfo.counts } : null
+  });
 });
 
 app.post('/song-upload', (req, res, next) => {
