@@ -8,7 +8,7 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Expose-Headers', 'X-Vizi-Text, X-Vizi-Commands, X-Vizi-Transcript, X-Vizi-Timing');
+  res.setHeader('Access-Control-Expose-Headers', 'X-Vizi-Text, X-Vizi-Commands, X-Vizi-Transcript');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -360,7 +360,6 @@ app.post('/claude-tts', (req, res) => {
 // Response: MP3 bytes + X-Vizi-Text + X-Vizi-Commands + X-Vizi-Transcript headers
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/stt-claude-tts', async (req, res) => {
-  const tHandlerStart = Date.now();
   const audioContent = req.body && req.body.audio;
   const sampleRate   = (req.body && req.body.sampleRate) || 17000;
   const mode         = (req.body && req.body.mode) || 'general';
@@ -372,9 +371,7 @@ app.post('/stt-claude-tts', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
   // ── Step 1: Google STT ────────────────────────────────────────────────────
-  const tSttStart = Date.now();
   let transcript = '';
-  let tSttEnd = null;
   try {
     const sttBody = JSON.stringify({
       config: { encoding: 'LINEAR16', sampleRateHertz: sampleRate, languageCode: 'en-US', model: 'default' },
@@ -408,17 +405,14 @@ app.post('/stt-claude-tts', async (req, res) => {
     console.error('STT error:', err.message);
     return res.status(500).json({ error: 'STT failed', detail: err.message });
   }
-  tSttEnd = Date.now();
 
-  console.log('STT transcript:', transcript, `(${tSttEnd - tSttStart}ms)`);
+  console.log('STT transcript:', transcript);
 
   if (!transcript || transcript.trim().length === 0) {
     return res.json({ transcript: '', empty: true });
   }
 
   // ── Step 2: Claude ────────────────────────────────────────────────────────
-  const tClaudeStart = Date.now();
-  let tClaudeEnd = null;
   let fullText = '';
   try {
     let systemText = SYSTEM_PROMPT;
@@ -469,26 +463,15 @@ app.post('/stt-claude-tts', async (req, res) => {
     console.error('Claude error:', err.message);
     return res.status(500).json({ error: 'Claude failed', detail: err.message });
   }
-  tClaudeEnd = Date.now();
 
   // ── Step 3: Google TTS ────────────────────────────────────────────────────
   const { spoken, commands } = parsePipeResponse(fullText);
   enqueueFretboardCommands(commands);
   if (!spoken) return res.status(500).json({ error: 'Empty spoken text from Claude' });
 
-  const tTtsStart = Date.now();
   try {
     const audioBuffer = await synthesizeToBuffer(spoken);
-    const tTtsEnd = Date.now();
     console.log('stt-claude-tts complete — transcript:', transcript, 'spoken:', spoken.slice(0, 60));
-
-    const timing = {
-      total:  tTtsEnd - tHandlerStart,
-      stt:    tSttEnd - tSttStart,
-      claude: tClaudeEnd - tClaudeStart,
-      tts:    tTtsEnd - tTtsStart
-    };
-    console.log('stt-claude-tts timing:', timing);
 
     res.set({
       'Content-Type':      'audio/mpeg',
@@ -496,7 +479,6 @@ app.post('/stt-claude-tts', async (req, res) => {
       'X-Vizi-Transcript': encodeURIComponent(transcript.substring(0, 200)),
       'X-Vizi-Text':       encodeURIComponent(spoken.substring(0, 500)),
       'X-Vizi-Commands':   encodeURIComponent(commands.substring(0, 500)),
-      'X-Vizi-Timing':     encodeURIComponent(JSON.stringify(timing)),
       'Cache-Control':     'no-cache'
     });
     res.send(audioBuffer);
