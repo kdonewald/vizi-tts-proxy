@@ -109,6 +109,18 @@ function parsePipeResponse(fullText) {
   return { spoken: parts[0] || '', commands: parts.slice(1).join('|') };
 }
 
+// P5: prepend the student's progress code to the CURRENT user turn only, so
+// Vizi always knows their level. History is left clean (we swap the last
+// message for a copy) so old codes don't pile up in the transcript.
+function injectProgress(messages, progress) {
+  if (!progress || !/^[0-9]{6}$/.test(String(progress))) return messages;
+  if (!messages.length) return messages;
+  const i = messages.length - 1;
+  if (typeof messages[i].content !== 'string') return messages;
+  messages[i] = { ...messages[i], content: `PROGRESS: ${progress}.\n` + messages[i].content };
+  return messages;
+}
+
 // ─── Fretboard command relay (mailbox) ────────────────────────────────────────
 // The fretboard can't be reached directly (it's plain-HTTP on the LAN and the
 // app is HTTPS). Instead, commands are queued here and the fretboard polls for
@@ -121,6 +133,9 @@ function enqueueFretboardCommands(commandsStr) {
   commandsStr.split('|').forEach(c => {
     const cmd = c.trim();
     if (!cmd) return;
+    // OPEN <stage> and PROGRESS <cat> <n> are client/state commands, not fretboard
+    // commands — the page handles them. Never queue them for the board.
+    if (/^(OPEN|PROGRESS)\b/i.test(cmd)) return;
     // Auto-Hold for static scale displays: a SCALE (all-shapes or a single
     // SHAPE n) must render with Hold ON or it lights and immediately clears.
     // Vizi's Hold discipline was unreliable, so we pin it to the command here:
@@ -306,6 +321,7 @@ app.post('/claude-tts', (req, res) => {
   getHistory();
   addToHistory('user', message);
   const messages = [...conversationHistory];
+  injectProgress(messages, req.body && req.body.progress);
 
   const claudeBody = JSON.stringify({
     model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
@@ -440,6 +456,7 @@ app.post('/stt-claude-tts', async (req, res) => {
     getHistory();
     addToHistory('user', transcript.trim());
     const messages = [...conversationHistory];
+    injectProgress(messages, req.body && req.body.progress);
 
     const claudeBody = JSON.stringify({
       model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
@@ -606,6 +623,7 @@ app.post('/claude', (req, res) => {
   getHistory();
   addToHistory('user', message);
   const messages = [...conversationHistory];
+  injectProgress(messages, req.body && req.body.progress);
 
   const claudeBody = JSON.stringify({
     model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
