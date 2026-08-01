@@ -120,7 +120,16 @@ function enqueueFretboardCommands(commandsStr) {
   if (!commandsStr) return;
   commandsStr.split('|').forEach(c => {
     const cmd = c.trim();
-    if (cmd) fretboardQueue.push(cmd);
+    if (!cmd) return;
+    // Auto-Hold for static scale displays: a SCALE (all-shapes or a single
+    // SHAPE n) must render with Hold ON or it lights and immediately clears.
+    // Vizi's Hold discipline was unreliable, so we pin it to the command here:
+    // queue HOLD ON right before any SCALE, so it's on by the time the board
+    // polls the SCALE ~0.75s later. (No auto HOLD OFF yet — sequential
+    // displays like progressions/tabs/songs still manage that themselves
+    // at the stage level.)
+    if (/^SCALE\b/i.test(cmd)) fretboardQueue.push('HOLD ON');
+    fretboardQueue.push(cmd);
   });
   if (fretboardQueue.length > FRETBOARD_QUEUE_MAX) {
     fretboardQueue = fretboardQueue.slice(-FRETBOARD_QUEUE_MAX);
