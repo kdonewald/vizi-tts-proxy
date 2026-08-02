@@ -713,7 +713,7 @@ app.get('/session-prompt/:id', (req, res) => {
   if (timeSignature) message += 'Time signature: ' + timeSignature + '. ';
   if (patternInfo) {
     message += 'Suggested strumming pattern: ' + patternInfo.name + ' — the motion is ' + patternInfo.spoken + '. ';
-    message += 'This exact pattern is shown visually on screen, and the student can practice it on the Strumming stage before coming back if they want to. ';
+    message += 'This exact pattern is shown visually on screen. ';
   }
   if (suggestedBpm) message += 'Suggested metronome tempo: ' + suggestedBpm + ' BPM. ';
   if (capo > 0) message += 'Capo is on fret ' + capo + '. ';
