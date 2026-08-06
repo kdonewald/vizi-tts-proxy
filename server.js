@@ -207,8 +207,45 @@ app.get('/reset', (req, res) => {
   res.json({ status: 'ok', message: 'Conversation history cleared' });
 });
 
+// ─── Spoken-chord normalization (so Google TTS says "Em" as "E minor", etc.) ──
+// Runs on the SPOKEN text at the TTS boundary only — the displayed X-Vizi-Text
+// is left as the model wrote it. Never touches bare single letters or "L.E.D." —
+// only tokens with a clear chord marker (minor m, a number, maj7/add/sus/dim/aug,
+// a slash, or a sharp/flat).
+function speakableChords(text) {
+  if (!text) return text;
+  const NOTE = '[A-G](?:#|b)?';
+  const numWord = { '2':'two','4':'four','5':'five','6':'six','7':'seven','9':'nine','11':'eleven','13':'thirteen' };
+  const acc = n => n.replace('#', ' sharp').replace(/b$/, ' flat');
+  const spell = (note, q) => {
+    let out = acc(note);
+    switch (q) {
+      case 'm':    out += ' minor'; break;
+      case 'm7':   out += ' minor seven'; break;
+      case 'maj7': out += ' major seven'; break;
+      case 'add9': out += ' add nine'; break;
+      case 'sus2': out += ' suspended two'; break;
+      case 'sus4': out += ' suspended four'; break;
+      case 'dim':  out += ' diminished'; break;
+      case 'aug':  out += ' augmented'; break;
+      case undefined: case '': break;
+      default:     out += ' ' + (numWord[q] || q); break;
+    }
+    return out;
+  };
+  const QUAL = '(?:maj7|m7|add9|sus2|sus4|dim|aug|m|7|6|9|11|13)';
+  text = text.replace(new RegExp('\\b(' + NOTE + ')(' + QUAL + ')?\\/(' + NOTE + ')\\b', 'g'),
+    (_, a, q, b) => spell(a, q) + ' over ' + acc(b));
+  text = text.replace(new RegExp('\\b(' + NOTE + ')(' + QUAL + ')\\b', 'g'),
+    (_, a, q) => spell(a, q));
+  text = text.replace(/\b([A-G])#/g, '$1 sharp');
+  text = text.replace(/\b([A-G])b\b/g, '$1 flat');
+  return text;
+}
+
 // ─── Google TTS helper ────────────────────────────────────────────────────────
 function synthesize(text, res) {
+  text = speakableChords(text);
   console.log('Synthesizing:', text.slice(0, 80));
   if (!GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY not set' });
 
@@ -248,6 +285,7 @@ function synthesize(text, res) {
 
 // ─── Promise-based TTS (for chained endpoints) ────────────────────────────────
 function synthesizeToBuffer(text) {
+  text = speakableChords(text);
   return new Promise((resolve, reject) => {
     if (!GOOGLE_API_KEY) return reject(new Error('GOOGLE_API_KEY not set'));
 
