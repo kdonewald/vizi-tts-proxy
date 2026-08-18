@@ -112,12 +112,16 @@ function parsePipeResponse(fullText) {
 // P5: prepend the student's progress code to the CURRENT user turn only, so
 // Vizi always knows their level. History is left clean (we swap the last
 // message for a copy) so old codes don't pile up in the transcript.
-function injectProgress(messages, progress) {
+function injectProgress(messages, progress, steps) {
   if (!progress || !/^[0-9]{6}$/.test(String(progress))) return messages;
   if (!messages.length) return messages;
   const i = messages.length - 1;
   if (typeof messages[i].content !== 'string') return messages;
-  messages[i] = { ...messages[i], content: `PROGRESS: ${progress}.\n` + messages[i].content };
+  let header = `PROGRESS: ${progress}.`;
+  if (steps && typeof steps === 'string' && steps.trim()) {
+    header += `\nCURRENT STEPS (already resolved from the code \u2014 teach THESE exact steps; do NOT re-derive them from the digits, and never say a step number aloud): ${steps.trim().slice(0, 600)}`;
+  }
+  messages[i] = { ...messages[i], content: header + `\n` + messages[i].content };
   return messages;
 }
 
@@ -359,7 +363,7 @@ app.post('/claude-tts', (req, res) => {
   getHistory();
   addToHistory('user', message);
   const messages = [...conversationHistory];
-  injectProgress(messages, req.body && req.body.progress);
+  injectProgress(messages, req.body && req.body.progress, req.body && req.body.steps);
 
   const claudeBody = JSON.stringify({
     model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
@@ -494,7 +498,7 @@ app.post('/stt-claude-tts', async (req, res) => {
     getHistory();
     addToHistory('user', transcript.trim());
     const messages = [...conversationHistory];
-    injectProgress(messages, req.body && req.body.progress);
+    injectProgress(messages, req.body && req.body.progress, req.body && req.body.steps);
 
     const claudeBody = JSON.stringify({
       model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
@@ -661,7 +665,7 @@ app.post('/claude', (req, res) => {
   getHistory();
   addToHistory('user', message);
   const messages = [...conversationHistory];
-  injectProgress(messages, req.body && req.body.progress);
+  injectProgress(messages, req.body && req.body.progress, req.body && req.body.steps);
 
   const claudeBody = JSON.stringify({
     model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
