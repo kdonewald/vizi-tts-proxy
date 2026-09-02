@@ -171,11 +171,16 @@ function logClaudeCache(label, usage) {
 
 // ─── Pipe response parser ────────────────────────────────────────────────────
 function parsePipeResponse(fullText) {
-  const parts = fullText.split('|').map(p => p.trim());
-  return {
-    spoken: parts[0] || '',
-    commands: parts.slice(1).join('|')
-  };
+  const parts = String(fullText || '').split('|');
+  const spoken = (parts[0] || '').trim();
+
+  // Only the first line after the pipe is allowed to be a fretboard command.
+  // If Claude accidentally adds spoken text after the command on a new line,
+  // keep that text out of the ESP32 command queue.
+  const commandSide = parts.slice(1).join('|').trim();
+  const commands = commandSide.split(/\r?\n/)[0].trim();
+
+  return { spoken, commands };
 }
 
 // P5: prepend the student's progress code to the CURRENT user turn only.
@@ -211,7 +216,9 @@ function enqueueFretboardCommands(commandsStr) {
   if (!commandsStr) return;
 
   commandsStr.split('|').forEach(c => {
-    const cmd = c.trim();
+    // Defensive cleanup: an ESP32 command must never contain trailing prose.
+    // Keep only the first physical line of each queued command.
+    const cmd = c.split(/\r?\n/)[0].trim();
     if (!cmd) return;
 
     if (/^(OPEN|PROGRESS)\b/i.test(cmd)) return;
