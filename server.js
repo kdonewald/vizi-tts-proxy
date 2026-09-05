@@ -526,71 +526,191 @@ function synthesize(text, res) {
 function synthesizeToBuffer(text) {
   text = speakableChords(text);
 
-  return new Promise((resolve, reject) => {
-    if (!GOOGLE_API_KEY) {
-      return reject(
-        new Error('GOOGLE_API_KEY not set')
-      );
-    }
+  // Latency guard: if Google TTS stalls, abort that attempt and retry once.
+  // This applies only to the Promise TTS helper used by the combined
+  // Claude/TTS and STT/Claude/TTS paths.
+  const TTS_TIMEOUT_MS = 6000;
+  const TTS_MAX_ATTEMPTS = 2;
 
-    const requestBody = JSON.stringify({
-      input: { text },
-      voice: {
-        languageCode: LANGUAGE_CODE,
-        name: VOICE_NAME
-      },
-      audioConfig: {
-        audioEncoding: 'MP3'
+  const makeAttempt = attemptNumber =>
+    new Promise((resolve, reject) => {
+      if (!GOOGLE_API_KEY) {
+        return reject(
+          new Error('GOOGLE_API_KEY not set')
+        );
       }
-    });
 
-    const options = {
-      hostname: 'texttospeech.googleapis.com',
-      path:
-        '/v1/text:synthesize?key=' +
-        encodeURIComponent(GOOGLE_API_KEY),
-      method: 'POST',
-      agent: googleAgent,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(requestBody)
-      }
-    };
-
-    const googleReq = https.request(options, googleRes => {
-      let data = '';
-
-      googleRes.on('data', chunk => {
-        data += chunk;
+      const requestBody = JSON.stringify({
+        input: { text },
+        voice: {
+          languageCode: LANGUAGE_CODE,
+          name: VOICE_NAME
+        },
+        audioConfig: {
+          audioEncoding: 'MP3'
+        }
       });
 
-      googleRes.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
+      const options = {
+        hostname: 'texttospeech.googleapis.com',
+        path:
+          '/v1/text:synthesize?key=' +
+          encodeURIComponent(GOOGLE_API_KEY),
+        method: 'POST',
+        agent: googleAgent,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(requestBody)
+        }
+      };
 
-          if (!parsed.audioContent) {
-            return reject(
-              new Error('No audio returned from TTS')
+      const startedAt = Date.now();
+      let settled = false;
+
+      const fail = err => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      };
+
+      const googleReq = https.request(options, googleRes => {
+        let data = '';
+
+        googleRes.on('data', chunk => {
+          data += chunk;
+        });
+
+        googleRes.on('end', () => {
+          if (settled) return;
+
+          const elapsed = Date.now() - startedAt;
+          const status = googleRes.statusCode || 0;
+          const contentType =
+            googleRes.headers['content-type'] || '';
+
+          if (status < 200 || status >= 300) {
+            const preview = data
+              .slice(0, 500)
+              .replace(/[\r\n]+/g, ' ');
+
+            console.error(
+              `TTS attempt ${attemptNumber} HTTP ${status} ` +
+              `after ${elapsed}ms | content-type: ${contentType} | ` +
+              `body: ${preview}`
+            );
+
+            return fail(
+              new Error(`Google TTS HTTP ${status}`)
             );
           }
 
-          resolve(
-            Buffer.from(
-              parsed.audioContent,
-              'base64'
-            )
-          );
-        } catch (err) {
-          reject(err);
-        }
+          try {
+            const parsed = JSON.parse(data);
+
+            if (!parsed.audioContent) {
+              const preview = data
+                .slice(0, 500)
+                .replace(/[\r\n]+/g, ' ');
+
+              console.error(
+                `TTS attempt ${attemptNumber} returned no audio ` +
+                `after ${elapsed}ms | content-type: ${contentType} | ` +
+                `body: ${preview}`
+              );
+
+              return fail(
+                new Error('No audio returned from TTS')
+              );
+            }
+
+            settled = true;
+
+            console.log(
+              `TTS attempt ${attemptNumber} succeeded in ${elapsed}ms ` +
+              `| HTTP ${status} | content-type: ${contentType}`
+            );
+
+            resolve(
+              Buffer.from(
+                parsed.audioContent,
+                'base64'
+              )
+            );
+          } catch (err) {
+            const preview = data
+              .slice(0, 500)
+              .replace(/[\r\n]+/g, ' ');
+
+            console.error(
+              `TTS attempt ${attemptNumber} parse error after ${elapsed}ms ` +
+              `| HTTP ${status} | content-type: ${contentType} | ` +
+              `body: ${preview}`
+            );
+
+            fail(err);
+          }
+        });
       });
+
+      googleReq.setTimeout(TTS_TIMEOUT_MS, () => {
+        const elapsed = Date.now() - startedAt;
+
+        console.error(
+          `TTS attempt ${attemptNumber} timed out after ${elapsed}ms`
+        );
+
+        // Reject the Promise immediately, then tear down the stalled socket.
+        // The later request 'error' event is ignored by the settled guard.
+        fail(
+          new Error(
+            `Google TTS timeout after ${TTS_TIMEOUT_MS}ms`
+          )
+        );
+        googleReq.destroy();
+      });
+
+      googleReq.on('error', err => {
+        const elapsed = Date.now() - startedAt;
+
+        if (!settled) {
+          console.error(
+            `TTS attempt ${attemptNumber} request error after ${elapsed}ms: ` +
+            err.message
+          );
+        }
+
+        fail(err);
+      });
+
+      googleReq.write(requestBody);
+      googleReq.end();
     });
 
-    googleReq.on('error', err => reject(err));
+  return (async () => {
+    let lastError;
 
-    googleReq.write(requestBody);
-    googleReq.end();
-  });
+    for (
+      let attempt = 1;
+      attempt <= TTS_MAX_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        return await makeAttempt(attempt);
+      } catch (err) {
+        lastError = err;
+
+        console.error(
+          `TTS attempt ${attempt} failed: ${err.message}`
+        );
+
+        if (attempt < TTS_MAX_ATTEMPTS) {
+          console.log('Retrying Google TTS once...');
+        }
+      }
+    }
+
+    throw lastError || new Error('Google TTS failed');
+  })();
 }
 
 app.get('/tts', (req, res) => {
