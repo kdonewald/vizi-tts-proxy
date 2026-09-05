@@ -526,10 +526,14 @@ function synthesize(text, res) {
 function synthesizeToBuffer(text) {
   text = speakableChords(text);
 
+  console.log(
+    `TTS input: ${text.length} chars | ${text.trim().split(/\\s+/).filter(Boolean).length} words`
+  );
+
   // Latency guard: if Google TTS stalls, abort that attempt and retry once.
   // This applies only to the Promise TTS helper used by the combined
   // Claude/TTS and STT/Claude/TTS paths.
-  const TTS_TIMEOUT_MS = 6000;
+  const TTS_TIMEOUT_MS = 10000;
   const TTS_MAX_ATTEMPTS = 2;
 
   const makeAttempt = attemptNumber =>
@@ -661,11 +665,11 @@ function synthesizeToBuffer(text) {
 
         // Reject the Promise immediately, then tear down the stalled socket.
         // The later request 'error' event is ignored by the settled guard.
-        fail(
-          new Error(
-            `Google TTS timeout after ${TTS_TIMEOUT_MS}ms`
-          )
+        const timeoutError = new Error(
+          `Google TTS timeout after ${TTS_TIMEOUT_MS}ms`
         );
+        timeoutError.code = 'VIZI_TTS_TIMEOUT';
+        fail(timeoutError);
         googleReq.destroy();
       });
 
@@ -703,8 +707,17 @@ function synthesizeToBuffer(text) {
           `TTS attempt ${attempt} failed: ${err.message}`
         );
 
+        // A plain Google TTS timeout means the service is slow. Starting the
+        // same synthesis over again only makes the student wait longer, so do
+        // not retry that case. We still retry once for HTTP, parse, socket, or
+        // other network/response failures.
+        if (err && err.code === 'VIZI_TTS_TIMEOUT') {
+          console.log('TTS timeout: not retrying this request.');
+          break;
+        }
+
         if (attempt < TTS_MAX_ATTEMPTS) {
-          console.log('Retrying Google TTS once...');
+          console.log('Retrying Google TTS once after non-timeout failure...');
         }
       }
     }
