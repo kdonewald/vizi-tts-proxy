@@ -237,6 +237,16 @@ function enqueueFretboardCommands(commandsStr) {
 
 app.get('/fretboard-poll', (req, res) => {
   const command = fretboardQueue.shift() || null;
+
+  if (command) {
+    console.log(
+      '[FRETBOARD POLL] sending:',
+      command,
+      '| remaining:',
+      fretboardQueue.length
+    );
+  }
+
   res.json({
     command,
     remaining: fretboardQueue.length
@@ -246,11 +256,21 @@ app.get('/fretboard-poll', (req, res) => {
 app.post('/fretboard-command', (req, res) => {
   const command = req.body && req.body.command;
 
+  console.log(
+    '[FRETBOARD COMMAND] received:',
+    command || '(empty)'
+  );
+
   if (!command) {
     return res.status(400).json({ error: 'Missing command' });
   }
 
   enqueueFretboardCommands(command);
+
+  console.log(
+    '[FRETBOARD COMMAND] queue now:',
+    JSON.stringify(fretboardQueue)
+  );
 
   res.json({
     status: 'queued',
