@@ -292,14 +292,26 @@ app.post('/fretboard-clear', (req, res) => {
 });
 
 app.get('/fretboard-clear', (req, res) => {
-  const cleared = fretboardQueue.length;
-  fretboardQueue = [];
-
-  console.log(`[fretboard-clear] Flushed ${cleared} queued command(s) via GET`);
+  // GET clear is intentionally NON-DESTRUCTIVE.
+  // Something outside the current web files is calling this endpoint after
+  // progression playback and was deleting the final queued chord before the
+  // ESP32 could poll it. Keep POST /fretboard-clear as the explicit destructive
+  // clear endpoint, but make accidental/background GET requests safe.
+  console.log(
+    '[fretboard-clear GET] ignored; queue preserved:',
+    fretboardQueue.length,
+    '| user-agent:',
+    req.get('user-agent') || '',
+    '| referer:',
+    req.get('referer') || '',
+    '| ip:',
+    req.ip || ''
+  );
 
   res.json({
-    status: 'ok',
-    cleared
+    status: 'ignored',
+    cleared: 0,
+    queued: fretboardQueue.length
   });
 });
 
