@@ -183,6 +183,89 @@ function parsePipeResponse(fullText) {
   return { spoken, commands };
 }
 
+
+// ─── Vizi command validator ──────────────────────────────────────────────────
+// Claude controls the conversation; this layer controls what is allowed to
+// reach the ESP32. Invalid or stage-owned commands are converted to an empty
+// command while preserving Vizi's spoken response.
+function userExplicitlyAskedForDisplay(text) {
+  const t = String(text || '').toLowerCase();
+  return /\b(show|display|light|lights|led|l\.e\.d|fretboard|show me|light up|put .* on)\b/.test(t);
+}
+
+function structuredStageFromSteps(steps) {
+  const s = String(steps || '').trim();
+  if (!s) return '';
+  const m = s.match(/^(Warm-up|Warmup|Strumming|Theory|Song|Chords|Soloing)\s*=/i);
+  return m ? m[1].toLowerCase().replace('warmup', 'warm-up') : '';
+}
+
+function isAllowedViziCommand(command) {
+  const c = String(command || '').trim();
+  if (!c) return true;
+
+  // Curriculum/stage words are never ESP32 commands.
+  if (/^(WARM-?UP|SONG|SOLOING|STRUMMING|THEORY|STAGE|OPEN|PROGRESS|LESSON|PRACTICE)\b/i.test(c)) {
+    return false;
+  }
+
+  // System controls.
+  if (/^(OFF|TEST|RESET|CANCEL|SLOWER|FASTER)$/i.test(c)) return true;
+  if (/^HOLD\s+(ON|OFF)$/i.test(c)) return true;
+  if (/^CAPO\s+(?:OFF|(?:[0-9]|1[0-3]))$/i.test(c)) return true;
+  if (/^FRET\s+(?:[0-9]|1[0-3])$/i.test(c)) return true;
+
+  // String / note / scale display commands.
+  if (/^STRING\s+(?:LE|A|D|G|B|HE)$/i.test(c)) return true;
+  if (/^STRINGS\s+[\[(].+[\])]$/i.test(c)) return true;
+  if (/^NOTES\s+[\[(].+[\])]$/i.test(c)) return true;
+  if (/^SCALE\s+[A-G](?:#|b)?\s+(?:major|minor|pent|pentatonic)\s+(?:ALL|SHAPE\s+[1-5])$/i.test(c)) return true;
+  if (/^S(?:He|B|G|D|A|Le)(?:[0-9]|1[0-3])$/i.test(c)) return true;
+
+  // Triads and CAGED/bar shapes.
+  if (/^TRIAD\s+(?:HE|B|G|D|A|LE)\s+[A-G](?:#|b)?m?$/i.test(c)) return true;
+  if (/^(?:E|A|D)\s+SHAPE\s+[A-G](?:#|b)?m?(?:\s+PLAY)?$/i.test(c)) return true;
+  if (/^(?:C|G)\s+SHAPE\s+[A-G](?:#|b)?(?:\s+PLAY)?$/i.test(c)) return true;
+
+  // Power chords: named root+string or movable shape demo.
+  if (/^CHORD\s+P\s+(?:[A-G](?:#|b)?(?:LE|A|D|G|B)|(?:LE|A|D|G|B)\s+PLAY)$/i.test(c)) return true;
+
+  // Named/open chord. Keep this intentionally compact so prose such as
+  // "CHORD Em PLAY and then..." cannot pass through.
+  if (/^CHORD\s+[A-G](?:#|b)?(?:m|6|7|m7|maj7|add9|sus2|sus4|dim|aug|9|11|13)?$/i.test(c)) return true;
+
+  // CHORDS is the firmware's sequence container. Require brackets/parentheses
+  // and reject obvious prose punctuation/question text.
+  if (/^CHORDS\s+[\[(].+[\])]$/i.test(c) && !/[?]/.test(c)) return true;
+
+  return false;
+}
+
+function validateViziCommands(commands, context = {}) {
+  const raw = String(commands || '').trim();
+  if (!raw) return { commands: '', blocked: false, reason: '' };
+
+  const stage = structuredStageFromSteps(context.steps);
+  const explicitDisplay = userExplicitlyAskedForDisplay(context.userMessage);
+
+  // These structured stages own their visual/practice behavior. A direct
+  // student request such as "show me E minor pentatonic shape one" overrides
+  // this suppression and may use a normal hardware command.
+  if (!explicitDisplay && ['warm-up', 'strumming', 'theory'].includes(stage)) {
+    return {
+      commands: '',
+      blocked: true,
+      reason: `structured-${stage}-stage-owns-hardware`
+    };
+  }
+
+  if (!isAllowedViziCommand(raw)) {
+    return { commands: '', blocked: true, reason: 'not-in-command-whitelist' };
+  }
+
+  return { commands: raw, blocked: false, reason: '' };
+}
+
 // P5: prepend the student's progress code to the CURRENT user turn only.
 function injectProgress(messages, progress, steps) {
   if (!progress || !/^[0-9]{6}$/.test(String(progress))) return messages;
@@ -445,7 +528,13 @@ app.post('/vizi-test', (req, res) => {
           history.splice(0, history.length - VIZI_TEST_MAX_HISTORY);
         }
 
-        const { spoken, commands } = parsePipeResponse(fullText);
+        const { spoken, commands: rawCommands } = parsePipeResponse(fullText);
+        const validation = validateViziCommands(rawCommands, {
+          mode,
+          steps: req.body && req.body.steps,
+          userMessage: message
+        });
+        const commands = validation.commands;
 
         // IMPORTANT: test route intentionally does NOT call
         // enqueueFretboardCommands() and does NOT call TTS.
@@ -455,6 +544,9 @@ app.post('/vizi-test', (req, res) => {
           fullText,
           spoken,
           commands,
+          rawCommands,
+          commandBlocked: validation.blocked,
+          commandBlockReason: validation.reason,
           pipeCount: (fullText.match(/\|/g) || []).length,
           historyLength: history.length
         });
@@ -867,8 +959,19 @@ app.post('/claude-tts', (req, res) => {
 
           const {
             spoken,
-            commands
+            commands: rawCommands
           } = parsePipeResponse(fullText);
+
+          const validation = validateViziCommands(rawCommands, {
+            mode,
+            steps: req.body && req.body.steps,
+            userMessage: message
+          });
+          const commands = validation.commands;
+
+          if (validation.blocked) {
+            console.warn('[VIZI COMMAND BLOCKED]', validation.reason, '| raw:', rawCommands);
+          }
 
           enqueueFretboardCommands(
             commands
@@ -1242,8 +1345,19 @@ app.post('/stt-claude-tts', async (req, res) => {
   // ── Step 3: TTS ──
   const {
     spoken,
-    commands
+    commands: rawCommands
   } = parsePipeResponse(fullText);
+
+  const validation = validateViziCommands(rawCommands, {
+    mode,
+    steps: req.body && req.body.steps,
+    userMessage: transcript
+  });
+  const commands = validation.commands;
+
+  if (validation.blocked) {
+    console.warn('[VIZI COMMAND BLOCKED]', validation.reason, '| raw:', rawCommands);
+  }
 
   enqueueFretboardCommands(
     commands
