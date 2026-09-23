@@ -353,6 +353,133 @@ app.get('/reset', (req, res) => {
   });
 });
 
+// ─── Vizi isolated QA test endpoint ───────────────────────────────────────────
+// TESTING ONLY: Uses the same Vizi prompts/model as production, but keeps its
+// own conversation history and NEVER calls TTS or queues commands to the guitar.
+const viziTestSessions = new Map();
+const VIZI_TEST_MAX_HISTORY = 20;
+const VIZI_TEST_TTL_MS = 30 * 60 * 1000;
+
+function getViziTestHistory(sessionId) {
+  const id = String(sessionId || 'default').slice(0, 80);
+  const now = Date.now();
+  let session = viziTestSessions.get(id);
+
+  if (!session || now - session.lastActivity > VIZI_TEST_TTL_MS) {
+    session = { history: [], lastActivity: now };
+    viziTestSessions.set(id, session);
+  }
+
+  session.lastActivity = now;
+  return session.history;
+}
+
+app.post('/vizi-test', (req, res) => {
+  let message = req.body && req.body.message;
+  const mode = (req.body && req.body.mode) || 'general';
+  const sessionId = (req.body && req.body.sessionId) || 'default';
+  const reset = !!(req.body && req.body.reset);
+
+  if (!message) {
+    return res.status(400).json({ error: 'Missing message' });
+  }
+
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  }
+
+  message = String(message).replace(/[\r\n]+/g, ' ').trim();
+  const history = getViziTestHistory(sessionId);
+
+  if (reset) history.length = 0;
+  history.push({ role: 'user', content: message });
+  if (history.length > VIZI_TEST_MAX_HISTORY) {
+    history.splice(0, history.length - VIZI_TEST_MAX_HISTORY);
+  }
+
+  const messages = history.map(m => ({ ...m }));
+  injectProgress(
+    messages,
+    req.body && req.body.progress,
+    req.body && req.body.steps
+  );
+
+  const systemText = buildSystemText(mode);
+  const claudeBody = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1000,
+    system: cachedSystem(systemText),
+    messages
+  });
+
+  const options = {
+    hostname: 'api.anthropic.com',
+    path: '/v1/messages',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Length': Buffer.byteLength(claudeBody)
+    }
+  };
+
+  const claudeReq = https.request(options, claudeRes => {
+    let data = '';
+    claudeRes.on('data', chunk => { data += chunk; });
+    claudeRes.on('end', () => {
+      try {
+        const parsed = JSON.parse(data);
+        if (claudeRes.statusCode !== 200) {
+          history.pop();
+          return res.status(claudeRes.statusCode).json({
+            error: 'Claude API error',
+            detail: parsed
+          });
+        }
+
+        logClaudeCache('vizi-test', parsed.usage);
+        const fullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
+        history.push({ role: 'assistant', content: fullText });
+        if (history.length > VIZI_TEST_MAX_HISTORY) {
+          history.splice(0, history.length - VIZI_TEST_MAX_HISTORY);
+        }
+
+        const { spoken, commands } = parsePipeResponse(fullText);
+
+        // IMPORTANT: test route intentionally does NOT call
+        // enqueueFretboardCommands() and does NOT call TTS.
+        res.json({
+          test: true,
+          sessionId: String(sessionId),
+          fullText,
+          spoken,
+          commands,
+          pipeCount: (fullText.match(/\|/g) || []).length,
+          historyLength: history.length
+        });
+      } catch (err) {
+        history.pop();
+        res.status(500).json({ error: 'Parse error', detail: err.message });
+      }
+    });
+  });
+
+  claudeReq.on('error', err => {
+    history.pop();
+    res.status(500).json({ error: 'Claude request failed', detail: err.message });
+  });
+
+  claudeReq.write(claudeBody);
+  claudeReq.end();
+});
+
+app.post('/vizi-test-reset', (req, res) => {
+  const sessionId = String((req.body && req.body.sessionId) || 'default').slice(0, 80);
+  viziTestSessions.delete(sessionId);
+  res.json({ status: 'ok', sessionId, message: 'Vizi test conversation cleared' });
+});
+
 // ─── Spoken chord normalization ──────────────────────────────────────────────
 function speakableChords(text) {
   if (!text) return text;
