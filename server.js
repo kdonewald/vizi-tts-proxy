@@ -171,18 +171,65 @@ function logClaudeCache(label, usage) {
 
 // ─── Pipe response parser ────────────────────────────────────────────────────
 function parsePipeResponse(fullText) {
-  const parts = String(fullText || '').split('|');
-  const spoken = (parts[0] || '').trim();
+  const raw = String(fullText || '');
+  const firstPipe = raw.indexOf('|');
 
-  // Only the first line after the pipe is allowed to be a fretboard command.
-  // If Claude accidentally adds spoken text after the command on a new line,
-  // keep that text out of the ESP32 command queue.
-  const commandSide = parts.slice(1).join('|').trim();
-  const commands = commandSide.split(/\r?\n/)[0].trim();
+  // No pipe: preserve all text as speech and let normalization add the pipe.
+  if (firstPipe < 0) {
+    return {
+      spoken: raw.trim(),
+      commands: '',
+      trailingSpoken: '',
+      rawPipeCount: 0
+    };
+  }
 
-  return { spoken, commands };
+  const spokenBeforePipe = raw.slice(0, firstPipe).trim();
+  const afterFirstPipe = raw.slice(firstPipe + 1);
+
+  // Only the first line after the first pipe can be a hardware command.
+  // Everything after that line is treated as accidental trailing speech,
+  // never as an ESP32 command.
+  const newlineMatch = afterFirstPipe.match(/\r?\n/);
+  let commandLine = afterFirstPipe;
+  let trailing = '';
+
+  if (newlineMatch) {
+    const idx = newlineMatch.index;
+    commandLine = afterFirstPipe.slice(0, idx);
+    trailing = afterFirstPipe.slice(idx + newlineMatch[0].length);
+  }
+
+  // A second pipe is never allowed to create a second command. Treat any
+  // material around later pipes as trailing speech.
+  const secondPipeInCommand = commandLine.indexOf('|');
+  if (secondPipeInCommand >= 0) {
+    trailing =
+      commandLine.slice(secondPipeInCommand + 1) +
+      (trailing ? '\n' + trailing : '');
+    commandLine = commandLine.slice(0, secondPipeInCommand);
+  }
+
+  trailing = trailing.replace(/\|/g, ' ').trim();
+
+  const spoken = [spokenBeforePipe, trailing]
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+
+  return {
+    spoken,
+    commands: commandLine.trim(),
+    trailingSpoken: trailing,
+    rawPipeCount: (raw.match(/\|/g) || []).length
+  };
 }
 
+function normalizedPipeResponse(spoken, commands) {
+  const cleanSpoken = String(spoken || '').replace(/\|/g, ' ').trim();
+  const cleanCommands = String(commands || '').replace(/\|/g, ' ').trim();
+  return cleanCommands ? `${cleanSpoken} | ${cleanCommands}` : `${cleanSpoken} |`;
+}
 
 // ─── Vizi command validator ──────────────────────────────────────────────────
 // Claude controls the conversation; this layer controls what is allowed to
@@ -196,8 +243,21 @@ function userExplicitlyAskedForDisplay(text) {
 function structuredStageFromSteps(steps) {
   const s = String(steps || '').trim();
   if (!s) return '';
-  const m = s.match(/^(Warm-up|Warmup|Strumming|Theory|Song|Chords|Soloing)\s*=/i);
-  return m ? m[1].toLowerCase().replace('warmup', 'warm-up') : '';
+
+  // CURRENT STEPS is a semicolon-separated list in a fixed category order.
+  // The active structured stage is the category whose value is NOT
+  // "not started". Do not simply take the first category (usually Warm-up).
+  const entries = s.split(';');
+  for (const entry of entries) {
+    const m = entry.trim().match(
+      /^(Warm-up|Warmup|Strumming|Theory|Song|Chords|Soloing)\s*=\s*(.+)$/i
+    );
+    if (!m) continue;
+    if (/^not started$/i.test(m[2].trim())) continue;
+    return m[1].toLowerCase().replace('warmup', 'warm-up');
+  }
+
+  return '';
 }
 
 function isAllowedViziCommand(command) {
@@ -522,19 +582,25 @@ app.post('/vizi-test', (req, res) => {
         }
 
         logClaudeCache('vizi-test', parsed.usage);
-        const fullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
-        history.push({ role: 'assistant', content: fullText });
-        if (history.length > VIZI_TEST_MAX_HISTORY) {
-          history.splice(0, history.length - VIZI_TEST_MAX_HISTORY);
-        }
+        const rawFullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
 
-        const { spoken, commands: rawCommands } = parsePipeResponse(fullText);
+        const parsedPipe = parsePipeResponse(rawFullText);
+        const spoken = parsedPipe.spoken;
+        const rawCommands = parsedPipe.commands;
         const validation = validateViziCommands(rawCommands, {
           mode,
           steps: req.body && req.body.steps,
           userMessage: message
         });
         const commands = validation.commands;
+        const fullText = normalizedPipeResponse(spoken, commands);
+
+        // Store the normalized response so later turns see the same safe format
+        // that the product actually uses.
+        history.push({ role: 'assistant', content: fullText });
+        if (history.length > VIZI_TEST_MAX_HISTORY) {
+          history.splice(0, history.length - VIZI_TEST_MAX_HISTORY);
+        }
 
         // IMPORTANT: test route intentionally does NOT call
         // enqueueFretboardCommands() and does NOT call TTS.
@@ -542,12 +608,15 @@ app.post('/vizi-test', (req, res) => {
           test: true,
           sessionId: String(sessionId),
           fullText,
+          rawFullText,
           spoken,
           commands,
           rawCommands,
           commandBlocked: validation.blocked,
           commandBlockReason: validation.reason,
           pipeCount: (fullText.match(/\|/g) || []).length,
+          rawPipeCount: parsedPipe.rawPipeCount,
+          responseNormalized: fullText !== rawFullText.trim(),
           historyLength: history.length
         });
       } catch (err) {
@@ -941,11 +1010,23 @@ app.post('/claude-tts', (req, res) => {
             parsed.usage
           );
 
-          const fullText =
+          const rawFullText =
             parsed.content &&
             parsed.content[0] &&
             parsed.content[0].text ||
             '';
+
+          const parsedPipe = parsePipeResponse(rawFullText);
+          const spoken = parsedPipe.spoken;
+          const rawCommands = parsedPipe.commands;
+
+          const validation = validateViziCommands(rawCommands, {
+            mode,
+            steps: req.body && req.body.steps,
+            userMessage: message
+          });
+          const commands = validation.commands;
+          const fullText = normalizedPipeResponse(spoken, commands);
 
           addToHistory(
             'assistant',
@@ -956,18 +1037,6 @@ app.post('/claude-tts', (req, res) => {
             'claude-tts response:',
             fullText.slice(0, 80)
           );
-
-          const {
-            spoken,
-            commands: rawCommands
-          } = parsePipeResponse(fullText);
-
-          const validation = validateViziCommands(rawCommands, {
-            mode,
-            steps: req.body && req.body.steps,
-            userMessage: message
-          });
-          const commands = validation.commands;
 
           if (validation.blocked) {
             console.warn('[VIZI COMMAND BLOCKED]', validation.reason, '| raw:', rawCommands);
