@@ -1,67 +1,98 @@
-const express = require(‘express’); const https = require(‘https’);
-const crypto = require(‘crypto’); const app = express();
+const express = require('express');
+const https   = require('https');
+const crypto  = require('crypto');
+const app     = express();
 
-// ─── CORS
-────────────────────────────────────────────────────────────────────
+// ─── CORS ────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
-res.setHeader(‘Access-Control-Allow-Origin’, ’*‘);
-res.setHeader(’Access-Control-Allow-Methods’, ‘GET, POST, OPTIONS’);
-res.setHeader(‘Access-Control-Allow-Headers’, ‘Content-Type’);
-res.setHeader(‘Access-Control-Expose-Headers’, ‘X-Vizi-Text,
-X-Vizi-Commands, X-Vizi-Transcript, X-Vizi-Timing’); if (req.method ===
-‘OPTIONS’) return res.sendStatus(200); next(); });
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', 'X-Vizi-Text, X-Vizi-Commands, X-Vizi-Transcript, X-Vizi-Timing');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 
-// ─── multer
-────────────────────────────────────────────────────────────────── let
-multer; try { multer = require(‘multer’); } catch(e) { multer = null; }
-const upload = multer ? multer({ storage: multer.memoryStorage(),
-limits: { fileSize: 10 * 1024 * 1024 } }) : null;
+// ─── multer ──────────────────────────────────────────────────────────────────
+let multer;
+try { multer = require('multer'); } catch(e) { multer = null; }
+const upload = multer ? multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }) : null;
 
-// ─── Keep-Alive agent for Google APIs
-──────────────────────────────────────── const googleAgent = new
-https.Agent({ keepAlive: true, maxSockets: 4, keepAliveMsecs: 30000 });
+// ─── Keep-Alive agent for Google APIs ────────────────────────────────────────
+const googleAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 4,
+  keepAliveMsecs: 30000
+});
 
-// ─── Conversation History
-──────────────────────────────────────────────────── const MAX_HISTORY =
-6; const HISTORY_TTL_MS = 10 * 60 * 1000;
+// ─── Conversation History ────────────────────────────────────────────────────
+const MAX_HISTORY    = 6;
+const HISTORY_TTL_MS = 10 * 60 * 1000;
 
-let conversationHistory = []; let lastActivityTime = Date.now();
+let conversationHistory = [];
+let lastActivityTime    = Date.now();
 
-function addToHistory(role, content) { conversationHistory.push({ role,
-content }); if (conversationHistory.length > MAX_HISTORY) {
-conversationHistory = conversationHistory.slice(-MAX_HISTORY); }
-lastActivityTime = Date.now(); }
-
-function getHistory() { if (Date.now() - lastActivityTime >
-HISTORY_TTL_MS) { console.log(‘History TTL expired — resetting
-conversation’); conversationHistory = []; } return conversationHistory;
+function addToHistory(role, content) {
+  conversationHistory.push({ role, content });
+  if (conversationHistory.length > MAX_HISTORY) {
+    conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+  }
+  lastActivityTime = Date.now();
 }
 
-// ─── Song Sessions
-──────────────────────────────────────────────────────────── const
-sessions = {}; const SESSION_TTL_MS = 30 * 60 * 1000;
+function getHistory() {
+  if (Date.now() - lastActivityTime > HISTORY_TTL_MS) {
+    console.log('History TTL expired — resetting conversation');
+    conversationHistory = [];
+  }
+  return conversationHistory;
+}
 
-function cleanOldSessions() { const now = Date.now(); for (const id in
-sessions) { if (now - sessions[id].createdAt > SESSION_TTL_MS) delete
-sessions[id]; } }
+// ─── Song Sessions ────────────────────────────────────────────────────────────
+const sessions = {};
+const SESSION_TTL_MS = 30 * 60 * 1000;
 
-function createSession(songTitle = ’‘) { cleanOldSessions(); const id =
-crypto.randomBytes(3).toString(’hex’).toUpperCase(); sessions[id] = {
-status: ‘waiting’, createdAt: Date.now(), songTitle, type: null, chords:
-[], progression: ’‘, tabTokens: [], rawText:’‘, capo: 0, key:’‘,
-timeSignature:’‘, strummingPattern:’’, suggestedBpm: null, error: null
-}; return id; }
+function cleanOldSessions() {
+  const now = Date.now();
+  for (const id in sessions) {
+    if (now - sessions[id].createdAt > SESSION_TTL_MS) delete sessions[id];
+  }
+}
 
-// ─── Raw body parser
-───────────────────────────────────────────────────────── app.use((req,
-res, next) => { if (req.headers[‘content-type’] &&
-req.headers[‘content-type’].includes(‘multipart/form-data’)) { return
-next(); }
+function createSession(songTitle = '') {
+  cleanOldSessions();
+  const id = crypto.randomBytes(3).toString('hex').toUpperCase();
+  sessions[id] = {
+    status: 'waiting',
+    createdAt: Date.now(),
+    songTitle,
+    type: null,
+    chords: [],
+    progression: '',
+    tabTokens: [],
+    rawText: '',
+    capo: 0,
+    key: '',
+    timeSignature: '',
+    strummingPattern: '',
+    suggestedBpm: null,
+    error: null
+  };
+  return id;
+}
 
-let data = ’‘; req.on(’data’, chunk => { data += chunk; });
+// ─── Raw body parser ─────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+    return next();
+  }
 
-req.on(‘end’, () => { req.rawBody = data; console.log(‘RAW BODY:’,
-JSON.stringify(data.slice(0, 300)));
+  let data = '';
+  req.on('data', chunk => { data += chunk; });
+
+  req.on('end', () => {
+    req.rawBody = data;
+    console.log('RAW BODY:', JSON.stringify(data.slice(0, 300)));
 
     let cleaned = data.trim();
 
@@ -80,246 +111,310 @@ JSON.stringify(data.slice(0, 300)));
 
     req.body = { text: cleaned };
     next();
+  });
+});
 
-}); });
+// ─── Environment Variables ──────────────────────────────────────────────────
+const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const YOUTUBE_API_KEY   = process.env.YOUTUBE_API_KEY;
+const VOICE_NAME        = process.env.VOICE_NAME || 'en-US-Neural2-F';
+const LANGUAGE_CODE     = 'en-US';
 
-// ─── Environment Variables
-────────────────────────────────────────────────── const GOOGLE_API_KEY
-= process.env.GOOGLE_API_KEY; const ANTHROPIC_API_KEY =
-process.env.ANTHROPIC_API_KEY; const YOUTUBE_API_KEY =
-process.env.YOUTUBE_API_KEY; const VOICE_NAME = process.env.VOICE_NAME
-|| ‘en-US-Neural2-F’; const LANGUAGE_CODE = ‘en-US’;
+const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT     || 'You are Vizi, an AI guitar tutor.';
+const REMINDER_PROMPT   = process.env.REMINDER_PROMPT   || '';
+const SONG_PROMPT       = process.env.SONG_PROMPT       || '';
+const STRUMMING_PROMPT  = process.env.STRUMMING_PROMPT  || '';
+const SOLOING_PROMPT    = process.env.SOLOING_PROMPT    || '';
+const CURRICULUM_PROMPT = process.env.CURRICULUM_PROMPT || '';
 
-const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || ‘You are Vizi, an AI
-guitar tutor.’; const REMINDER_PROMPT = process.env.REMINDER_PROMPT ||
-’‘; const SONG_PROMPT = process.env.SONG_PROMPT ||’‘; const
-STRUMMING_PROMPT = process.env.STRUMMING_PROMPT ||’‘; const
-SOLOING_PROMPT = process.env.SOLOING_PROMPT ||’‘; const
-CURRICULUM_PROMPT = process.env.CURRICULUM_PROMPT ||’’;
+// ─── Anthropic prompt caching ────────────────────────────────────────────────
+function buildSystemText(mode) {
+  let systemText = SYSTEM_PROMPT;
 
-// ─── Anthropic prompt caching
-──────────────────────────────────────────────── function
-buildSystemText(mode) { let systemText = SYSTEM_PROMPT;
+  if (mode === 'song' && SONG_PROMPT) {
+    systemText = SYSTEM_PROMPT + '\n\n' + SONG_PROMPT;
+  } else if (mode === 'strumming' && STRUMMING_PROMPT) {
+    systemText = SYSTEM_PROMPT + '\n\n' + STRUMMING_PROMPT;
+  } else if (mode === 'soloing' && SOLOING_PROMPT) {
+    systemText = SYSTEM_PROMPT + '\n\n' + SOLOING_PROMPT;
+  } else if (mode === 'talk' || mode === 'general') {
+    systemText =
+      SYSTEM_PROMPT +
+      (REMINDER_PROMPT ? '\n\n' + REMINDER_PROMPT : '') +
+      (CURRICULUM_PROMPT ? '\n\n' + CURRICULUM_PROMPT : '');
+  }
 
-if (mode === ‘song’ && SONG_PROMPT) { systemText = SYSTEM_PROMPT + ‘’ +
-SONG_PROMPT; } else if (mode === ‘strumming’ && STRUMMING_PROMPT) {
-systemText = SYSTEM_PROMPT + ‘’ + STRUMMING_PROMPT; } else if (mode ===
-‘soloing’ && SOLOING_PROMPT) { systemText = SYSTEM_PROMPT + ‘’ +
-SOLOING_PROMPT; } else if (mode === ‘talk’ || mode === ‘general’) {
-systemText = SYSTEM_PROMPT + (REMINDER_PROMPT ? ‘’ + REMINDER_PROMPT :
-’‘) + (CURRICULUM_PROMPT ?’’ + CURRICULUM_PROMPT : ’’); }
+  return systemText;
+}
 
-return systemText; }
+function cachedSystem(systemText) {
+  return [
+    {
+      type: 'text',
+      text: systemText,
+      cache_control: { type: 'ephemeral' }
+    }
+  ];
+}
 
-function cachedSystem(systemText) { return [ { type: ‘text’, text:
-systemText, cache_control: { type: ‘ephemeral’ } } ]; }
+function logClaudeCache(label, usage) {
+  if (!usage) return;
 
-function logClaudeCache(label, usage) { if (!usage) return;
+  console.log(
+    `[${label}] Claude cache — created:${usage.cache_creation_input_tokens || 0} ` +
+    `read:${usage.cache_read_input_tokens || 0} ` +
+    `uncachedInput:${usage.input_tokens || 0} ` +
+    `output:${usage.output_tokens || 0}`
+  );
+}
 
-console.log(
-[${label}] Claude cache — created:${usage.cache_creation_input_tokens || 0} +
-read:${usage.cache_read_input_tokens || 0} +
-uncachedInput:${usage.input_tokens || 0} +
-output:${usage.output_tokens || 0} ); }
+// ─── Pipe response parser ────────────────────────────────────────────────────
+function parsePipeResponse(fullText) {
+  const raw = String(fullText || '');
+  const firstPipe = raw.indexOf('|');
 
-// ─── Pipe response parser
-──────────────────────────────────────────────────── function
-parsePipeResponse(fullText) { const raw = String(fullText || ’‘); const
-firstPipe = raw.indexOf(’|’);
+  // No pipe: preserve all text as speech and let normalization add the pipe.
+  if (firstPipe < 0) {
+    return {
+      spoken: raw.trim(),
+      commands: '',
+      trailingSpoken: '',
+      rawPipeCount: 0
+    };
+  }
 
-// No pipe: preserve all text as speech and let normalization add the
-pipe. if (firstPipe < 0) { return { spoken: raw.trim(), commands: ’‘,
-trailingSpoken:’’, rawPipeCount: 0 }; }
+  const spokenBeforePipe = raw.slice(0, firstPipe).trim();
+  const afterFirstPipe = raw.slice(firstPipe + 1);
 
-const spokenBeforePipe = raw.slice(0, firstPipe).trim(); const
-afterFirstPipe = raw.slice(firstPipe + 1);
+  // Only the first line after the first pipe can be a hardware command.
+  // Everything after that line is treated as accidental trailing speech,
+  // never as an ESP32 command.
+  const newlineMatch = afterFirstPipe.match(/\r?\n/);
+  let commandLine = afterFirstPipe;
+  let trailing = '';
 
-// Only the first line after the first pipe can be a hardware command.
-// Everything after that line is treated as accidental trailing speech,
-// never as an ESP32 command. const newlineMatch =
-afterFirstPipe.match(//); let commandLine = afterFirstPipe; let trailing
-= ’’;
+  if (newlineMatch) {
+    const idx = newlineMatch.index;
+    commandLine = afterFirstPipe.slice(0, idx);
+    trailing = afterFirstPipe.slice(idx + newlineMatch[0].length);
+  }
 
-if (newlineMatch) { const idx = newlineMatch.index; commandLine =
-afterFirstPipe.slice(0, idx); trailing = afterFirstPipe.slice(idx +
-newlineMatch[0].length); }
+  // A second pipe is never allowed to create a second command. Treat any
+  // material around later pipes as trailing speech.
+  const secondPipeInCommand = commandLine.indexOf('|');
+  if (secondPipeInCommand >= 0) {
+    trailing =
+      commandLine.slice(secondPipeInCommand + 1) +
+      (trailing ? '\n' + trailing : '');
+    commandLine = commandLine.slice(0, secondPipeInCommand);
+  }
 
-// A second pipe is never allowed to create a second command. Treat any
-// material around later pipes as trailing speech. const
-secondPipeInCommand = commandLine.indexOf(‘|’); if
-(secondPipeInCommand >= 0) { trailing =
-commandLine.slice(secondPipeInCommand + 1) + (trailing ? ‘’ + trailing :
-’’); commandLine = commandLine.slice(0, secondPipeInCommand); }
+  trailing = trailing.replace(/\|/g, ' ').trim();
 
-trailing = trailing.replace(/|/g, ’ ’).trim();
+  const spoken = [spokenBeforePipe, trailing]
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
 
-const spoken = [spokenBeforePipe, trailing] .filter(Boolean) .join(‘’)
-.trim();
+  return {
+    spoken,
+    commands: commandLine.trim(),
+    trailingSpoken: trailing,
+    rawPipeCount: (raw.match(/\|/g) || []).length
+  };
+}
 
-return { spoken, commands: commandLine.trim(), trailingSpoken: trailing,
-rawPipeCount: (raw.match(/|/g) || []).length }; }
+function normalizedPipeResponse(spoken, commands) {
+  const cleanSpoken = String(spoken || '').replace(/\|/g, ' ').trim();
+  const cleanCommands = String(commands || '').replace(/\|/g, ' ').trim();
+  return cleanCommands ? `${cleanSpoken} | ${cleanCommands}` : `${cleanSpoken} |`;
+}
 
-function normalizedPipeResponse(spoken, commands) { const cleanSpoken =
-String(spoken || ’‘).replace(/|/g,’ ‘).trim(); const cleanCommands =
-String(commands ||’‘).replace(/|/g,’ ’).trim(); return cleanCommands ?
-${cleanSpoken} | ${cleanCommands} : ${cleanSpoken} |; }
 
-// V5.2: Recover a valid hardware command that Claude accidentally
-placed on // the spoken side of the pipe. Recovery is intentionally
-conservative: only // the entire spoken field or its final physical line
-may be promoted, and the // candidate must already pass the normal
-command whitelist below. function
-recoverMisplacedViziCommand(parsedPipe) { const out = { …parsedPipe,
-commandRecovered: false }; if (String(out.commands || ’’).trim()) return
-out;
+// V5.2: Recover a valid hardware command that Claude accidentally placed on
+// the spoken side of the pipe. Recovery is intentionally conservative: only
+// the entire spoken field or its final physical line may be promoted, and the
+// candidate must already pass the normal command whitelist below.
+function recoverMisplacedViziCommand(parsedPipe) {
+  const out = { ...parsedPipe, commandRecovered: false };
+  if (String(out.commands || '').trim()) return out;
 
-const spoken = String(out.spoken || ’’).trim(); if (!spoken) return out;
+  const spoken = String(out.spoken || '').trim();
+  if (!spoken) return out;
 
-const lines = spoken.split(//); const candidate =
-String(lines[lines.length - 1] || ’’).trim(); if (!candidate ||
-!isAllowedViziCommand(candidate)) return out;
+  const lines = spoken.split(/\r?\n/);
+  const candidate = String(lines[lines.length - 1] || '').trim();
+  if (!candidate || !isAllowedViziCommand(candidate)) return out;
 
-// If Claude returned only the command before the pipe, keep TTS usable
-with // a short neutral acknowledgement. Otherwise remove only the final
-command // line from speech. const remaining = lines.slice(0,
--1).join(‘’).trim(); out.spoken = remaining || ‘Here you go.’;
-out.commands = candidate; out.commandRecovered = true; return out; }
+  // If Claude returned only the command before the pipe, keep TTS usable with
+  // a short neutral acknowledgement. Otherwise remove only the final command
+  // line from speech.
+  const remaining = lines.slice(0, -1).join('\n').trim();
+  out.spoken = remaining || 'Here you go.';
+  out.commands = candidate;
+  out.commandRecovered = true;
+  return out;
+}
 
-// ─── Vizi command validator
-────────────────────────────────────────────────── // Claude controls
-the conversation; this layer controls what is allowed to // reach the
-ESP32. Invalid or stage-owned commands are converted to an empty //
-command while preserving Vizi’s spoken response. function
-userExplicitlyAskedForDisplay(text) { const t = String(text ||
-’’).toLowerCase(); return
-/show|display|light|lights|led|l.e.d|fretboard|show me|light up|put .*
-on).test(t); }
+// ─── Vizi command validator ──────────────────────────────────────────────────
+// Claude controls the conversation; this layer controls what is allowed to
+// reach the ESP32. Invalid or stage-owned commands are converted to an empty
+// command while preserving Vizi's spoken response.
+function userExplicitlyAskedForDisplay(text) {
+  const t = String(text || '').toLowerCase();
+  return /\b(show|display|light|lights|led|l\.e\.d|fretboard|show me|light up|put .* on)\b/.test(t);
+}
 
-function structuredStageFromSteps(steps) { const s = String(steps ||
-’‘).trim(); if (!s) return’’;
+function structuredStageFromSteps(steps) {
+  const s = String(steps || '').trim();
+  if (!s) return '';
 
-// CURRENT STEPS is a semicolon-separated list in a fixed category
-order. // The active structured stage is the category whose value is NOT
-// “not started”. Do not simply take the first category (usually
-Warm-up). const entries = s.split(‘;’); for (const entry of entries) {
-const m = entry.trim().match(
-/^(Warm-up|Warmup|Strumming|Theory|Song|Chords|Soloing)=(.+)/i); if(\!m)continue; if(/^(n)otstarted/i.test(m[2].trim()))
-continue; return m[1].toLowerCase().replace(‘warmup’, ‘warm-up’); }
+  // CURRENT STEPS is a semicolon-separated list in a fixed category order.
+  // The active structured stage is the category whose value is NOT
+  // "not started". Do not simply take the first category (usually Warm-up).
+  const entries = s.split(';');
+  for (const entry of entries) {
+    const m = entry.trim().match(
+      /^(Warm-up|Warmup|Strumming|Theory|Song|Chords|Soloing)\s*=\s*(.+)$/i
+    );
+    if (!m) continue;
+    if (/^not started$/i.test(m[2].trim())) continue;
+    return m[1].toLowerCase().replace('warmup', 'warm-up');
+  }
 
-return ’’; }
+  return '';
+}
 
-function isAllowedViziCommand(command) { const c = String(command ||
-’’).trim(); if (!c) return true;
+function isAllowedViziCommand(command) {
+  const c = String(command || '').trim();
+  if (!c) return true;
 
-// Curriculum/stage words are never ESP32 commands. if
-(/^(WARM-?UP|SONG|SOLOING|STRUMMING|THEORY|STAGE|OPEN|PROGRESS|LESSON|PRACTICE)i.test(c))
-{ return false; }
+  // Curriculum/stage words are never ESP32 commands.
+  if (/^(WARM-?UP|SONG|SOLOING|STRUMMING|THEORY|STAGE|OPEN|PROGRESS|LESSON|PRACTICE)\b/i.test(c)) {
+    return false;
+  }
 
-// System controls. if
-(/^(OFF|TEST|RESET|CANCEL|SLOWER|FASTER)$/i.test(c)) return true;
-  if (/^HOLD\s+(ON|OFF)$/i.test(c)) return true; if
-(/^CAPO+(?:OFF|(?:[0-9]|1[0-3]))$/i.test(c)) return true;
+  // System controls.
+  if (/^(OFF|TEST|RESET|CANCEL|SLOWER|FASTER)$/i.test(c)) return true;
+  if (/^HOLD\s+(ON|OFF)$/i.test(c)) return true;
+  if (/^CAPO\s+(?:OFF|(?:[0-9]|1[0-3]))$/i.test(c)) return true;
   if (/^FRET\s+(?:[0-9]|1[0-3])$/i.test(c)) return true;
 
-// String / note / scale display commands. if
-(/^STRING+(?:LE|A|D|G|B|HE)$/i.test(c)) return true;
-  if (/^STRINGS\s+[\[(].+[\])]$/i.test(c)) return true; if
-(/^NOTES+[[(].+[])]$/i.test(c)) return true;
-  if (/^SCALE\s+[A-G](?:#|b)?\s+(?:major|minor|pent|pentatonic)\s+(?:ALL|SHAPE\s+[1-5])$/i.test(c))
-return true; if (/^S(?:He|B|G|D|A|Le)(?:[0-9]|1[0-3])$/i.test(c)) return
-true;
+  // String / note / scale display commands.
+  if (/^STRING\s+(?:LE|A|D|G|B|HE)$/i.test(c)) return true;
+  if (/^STRINGS\s+[\[(].+[\])]$/i.test(c)) return true;
+  if (/^NOTES\s+[\[(].+[\])]$/i.test(c)) return true;
+  if (/^SCALE\s+[A-G](?:#|b)?\s+(?:major|minor|pent|pentatonic)\s+(?:ALL|SHAPE\s+[1-5])$/i.test(c)) return true;
+  if (/^S(?:He|B|G|D|A|Le)(?:[0-9]|1[0-3])$/i.test(c)) return true;
 
-// Triads and CAGED/bar shapes. if
-(/^TRIAD+(?:HE|B|G|D|A|LE)+A-G?m?$/i.test(c)) return true;
-  if (/^(?:E|A|D)\s+SHAPE\s+[A-G](?:#|b)?m?(?:\s+PLAY)?$/i.test(c))
-return true; if (/^(?:C|G)+SHAPE+A-G?(?:+PLAY)?$/i.test(c)) return true;
+  // Triads and CAGED/bar shapes.
+  if (/^TRIAD\s+(?:HE|B|G|D|A|LE)\s+[A-G](?:#|b)?m?$/i.test(c)) return true;
+  if (/^(?:E|A|D)\s+SHAPE\s+[A-G](?:#|b)?m?(?:\s+PLAY)?$/i.test(c)) return true;
+  if (/^(?:C|G)\s+SHAPE\s+[A-G](?:#|b)?(?:\s+PLAY)?$/i.test(c)) return true;
 
-// Power chords: named root+string or movable shape demo. if
-(/^CHORD+P+(?:A-G?(?:LE|A|D|G|B)|(?:LE|A|D|G|B)+PLAY)$/i.test(c)) return
-true;
+  // Power chords: named root+string or movable shape demo.
+  if (/^CHORD\s+P\s+(?:[A-G](?:#|b)?(?:LE|A|D|G|B)|(?:LE|A|D|G|B)\s+PLAY)$/i.test(c)) return true;
 
-// Named/open chord. Keep this intentionally compact so prose such as //
-“CHORD Em PLAY and then…” cannot pass through. if
-(/^CHORD+A-G?(?:m|6|7|m7|maj7|add9|sus2|sus4|dim|aug|9|11|13)?$/i.test(c))
-return true;
+  // Named/open chord. Keep this intentionally compact so prose such as
+  // "CHORD Em PLAY and then..." cannot pass through.
+  if (/^CHORD\s+[A-G](?:#|b)?(?:m|6|7|m7|maj7|add9|sus2|sus4|dim|aug|9|11|13)?$/i.test(c)) return true;
 
-// CHORDS is the firmware’s sequence container. Require
-brackets/parentheses // and reject obvious prose punctuation/question
-text. if (/^CHORDS+[[(].+[])]$/i.test(c) && !/[?]/.test(c)) return true;
+  // CHORDS is the firmware's sequence container. Require brackets/parentheses
+  // and reject obvious prose punctuation/question text.
+  if (/^CHORDS\s+[\[(].+[\])]$/i.test(c) && !/[?]/.test(c)) return true;
 
-return false; }
+  return false;
+}
 
-function validateViziCommands(commands, context = {}) { const raw =
-String(commands || ’‘).trim(); if (!raw) return { commands:’‘, blocked:
-false, reason:’’ };
+function validateViziCommands(commands, context = {}) {
+  const raw = String(commands || '').trim();
+  if (!raw) return { commands: '', blocked: false, reason: '' };
 
-const stage = structuredStageFromSteps(context.steps); const
-explicitDisplay = userExplicitlyAskedForDisplay(context.userMessage);
+  const stage = structuredStageFromSteps(context.steps);
+  const explicitDisplay = userExplicitlyAskedForDisplay(context.userMessage);
 
-// These structured stages own their visual/practice behavior. A direct
-// student request such as “show me E minor pentatonic shape one”
-overrides // this suppression and may use a normal hardware command. if
-(!explicitDisplay && [‘warm-up’, ‘strumming’, ‘theory’].includes(stage))
-{ return { commands: ’’, blocked: true, reason:
-structured-${stage}-stage-owns-hardware }; }
+  // These structured stages own their visual/practice behavior. A direct
+  // student request such as "show me E minor pentatonic shape one" overrides
+  // this suppression and may use a normal hardware command.
+  if (!explicitDisplay && ['warm-up', 'strumming', 'theory'].includes(stage)) {
+    return {
+      commands: '',
+      blocked: true,
+      reason: `structured-${stage}-stage-owns-hardware`
+    };
+  }
 
-if (!isAllowedViziCommand(raw)) { return { commands: ’‘, blocked: true,
-reason: ’not-in-command-whitelist’ }; }
+  if (!isAllowedViziCommand(raw)) {
+    return { commands: '', blocked: true, reason: 'not-in-command-whitelist' };
+  }
 
-return { commands: raw, blocked: false, reason: ’’ }; }
+  return { commands: raw, blocked: false, reason: '' };
+}
 
-// V5.2: Short acknowledgements are continuations of the immediately
-preceding // assistant offer, not fresh requests for curriculum routing.
-This helper is // deliberately narrow so mastery phrases such as “I’ve
-got this” still use // normal structured-stage progress handling.
-function isShortContinuationCue(text) { const t = String(text || ’‘)
-.toLowerCase() .replace(/[.!?,]/g,’ ‘) .replace(/+/g,’ ’) .trim();
+// V5.2: Short acknowledgements are continuations of the immediately preceding
+// assistant offer, not fresh requests for curriculum routing. This helper is
+// deliberately narrow so mastery phrases such as “I've got this” still use
+// normal structured-stage progress handling.
+function isShortContinuationCue(text) {
+  const t = String(text || '')
+    .toLowerCase()
+    .replace(/[.!?,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-return /^(?:yes|yeah|yep|sure|okay|ok|go ahead|do it|show me|let’s
-go|lets go|let’s do it|lets do it|sure go ahead|okay show me|ok show
-me)$/.test(t); }
+  return /^(?:yes|yeah|yep|sure|okay|ok|go ahead|do it|show me|let's go|lets go|let's do it|lets do it|sure go ahead|okay show me|ok show me)$/.test(t);
+}
 
-// P5: prepend the student’s progress code to the CURRENT user turn
-only. function injectProgress(messages, progress, steps) { if (!progress
-|| !/[1]{6}$/.test(String(progress))) return messages; if
-(!messages.length) return messages;
+// P5: prepend the student's progress code to the CURRENT user turn only.
+function injectProgress(messages, progress, steps) {
+  if (!progress || !/^[0-9]{6}$/.test(String(progress))) return messages;
+  if (!messages.length) return messages;
 
-const i = messages.length - 1; if (typeof messages[i].content !==
-‘string’) return messages;
+  const i = messages.length - 1;
+  if (typeof messages[i].content !== 'string') return messages;
 
-const originalUserText = messages[i].content; const continuation =
-isShortContinuationCue(originalUserText);
+  const originalUserText = messages[i].content;
+  const continuation = isShortContinuationCue(originalUserText);
 
-let header = PROGRESS: ${progress}.;
+  let header = `PROGRESS: ${progress}.`;
 
-if (continuation) { header +=
-\nCONVERSATION CONTINUATION — HARD: This short reply accepts/continues the +
-immediately preceding assistant offer. Resolve it from conversation history first. +
-Do NOT use CURRENT STEPS to replace that pending offer, start Warm-up, jump categories, +
-or ask permission again. If the pending offer was a specific valid fretboard display, +
-execute that exact display now.; }
+  if (continuation) {
+    header +=
+      `\nCONVERSATION CONTINUATION — HARD: This short reply accepts/continues the ` +
+      `immediately preceding assistant offer. Resolve it from conversation history first. ` +
+      `Do NOT use CURRENT STEPS to replace that pending offer, start Warm-up, jump categories, ` +
+      `or ask permission again. If the pending offer was a specific valid fretboard display, ` +
+      `execute that exact display now.`;
+  }
 
-if (steps && typeof steps === ‘string’ && steps.trim()) { header +=
-\nCURRENT STEPS (already resolved from the code — teach THESE exact steps; +
-do NOT re-derive them from the digits, and never say a step number aloud): +
-${steps.trim().slice(0, 600)}; }
+  if (steps && typeof steps === 'string' && steps.trim()) {
+    header +=
+      `\nCURRENT STEPS (already resolved from the code — teach THESE exact steps; ` +
+      `do NOT re-derive them from the digits, and never say a step number aloud): ` +
+      `${steps.trim().slice(0, 600)}`;
+  }
 
-messages[i] = { …messages[i], content: header + ‘’ + messages[i].content
-};
+  messages[i] = {
+    ...messages[i],
+    content: header + '\n' + messages[i].content
+  };
 
-return messages; }
+  return messages;
+}
 
-// ─── Fretboard command relay
-───────────────────────────────────────────────── let fretboardQueue =
-[]; const FRETBOARD_QUEUE_MAX = 50;
+// ─── Fretboard command relay ─────────────────────────────────────────────────
+let fretboardQueue = [];
+const FRETBOARD_QUEUE_MAX = 50;
 
-function enqueueFretboardCommands(commandsStr) { if (!commandsStr)
-return;
+function enqueueFretboardCommands(commandsStr) {
+  if (!commandsStr) return;
 
-commandsStr.split(‘|’).forEach(c => { // Defensive cleanup: an ESP32
-command must never contain trailing prose. // Keep only the first
-physical line of each queued command. const cmd = c.split(//)[0].trim();
-if (!cmd) return;
+  commandsStr.split('|').forEach(c => {
+    // Defensive cleanup: an ESP32 command must never contain trailing prose.
+    // Keep only the first physical line of each queued command.
+    const cmd = c.split(/\r?\n/)[0].trim();
+    if (!cmd) return;
 
     if (/^(OPEN|PROGRESS)\b/i.test(cmd)) return;
 
@@ -328,130 +423,215 @@ if (!cmd) return;
     }
 
     fretboardQueue.push(cmd);
+  });
 
-});
-
-if (fretboardQueue.length > FRETBOARD_QUEUE_MAX) { fretboardQueue =
-fretboardQueue.slice(-FRETBOARD_QUEUE_MAX); } }
-
-app.get(‘/fretboard-poll’, (req, res) => { const command =
-fretboardQueue.shift() || null;
-
-if (command) { console.log( ‘[FRETBOARD POLL] sending:’, command, ‘|
-remaining:’, fretboardQueue.length ); }
-
-res.json({ command, remaining: fretboardQueue.length }); });
-
-app.post(‘/fretboard-command’, (req, res) => { const command = req.body
-&& req.body.command;
-
-console.log( ‘[FRETBOARD COMMAND] received:’, command || ‘(empty)’ );
-
-if (!command) { return res.status(400).json({ error: ‘Missing command’
-}); }
-
-enqueueFretboardCommands(command);
-
-console.log( ‘[FRETBOARD COMMAND] queue now:’,
-JSON.stringify(fretboardQueue) );
-
-res.json({ status: ‘queued’, command, queued: fretboardQueue.length });
-});
-
-app.post(‘/fretboard-clear’, (req, res) => { const cleared =
-fretboardQueue.length; fretboardQueue = [];
-
-console.log([fretboard-clear] Flushed ${cleared} queued command(s));
-
-res.json({ status: ‘ok’, cleared }); });
-
-app.get(‘/fretboard-clear’, (req, res) => { const cleared =
-fretboardQueue.length; fretboardQueue = [];
-
-console.log( [fretboard-clear GET] Flushed ${cleared} queued command(s),
-‘| user-agent:’, req.get(‘user-agent’) || ’‘,’| referer:‘,
-req.get(’referer’) || ’‘,’| ip:‘, req.ip ||’’ );
-
-res.json({ status: ‘ok’, cleared }); });
-
-// ─── Health
-──────────────────────────────────────────────────────────────────
-app.get(‘/health’, (req, res) => { res.json({ status: ‘Vizi TTS Proxy
-running’, voice: VOICE_NAME, model: ‘claude-haiku-4-5-20251001’,
-claudeReady: !!ANTHROPIC_API_KEY, youtubeReady: !!YOUTUBE_API_KEY,
-historyLength: conversationHistory.length, historyIdleSecs:
-Math.floor((Date.now() - lastActivityTime) / 1000), activeSessions:
-Object.keys(sessions).length, multerReady: !!multer, songPromptReady:
-!!SONG_PROMPT, fretboardQueued: fretboardQueue.length }); });
-
-// ─── Reset
-───────────────────────────────────────────────────────────────────
-app.post(‘/reset’, (req, res) => { conversationHistory = [];
-lastActivityTime = Date.now();
-
-console.log(‘Conversation history reset via POST’);
-
-res.json({ status: ‘ok’, message: ‘Conversation history cleared’ }); });
-
-app.get(‘/reset’, (req, res) => { conversationHistory = [];
-lastActivityTime = Date.now();
-
-console.log(‘Conversation history reset via GET’);
-
-res.json({ status: ‘ok’, message: ‘Conversation history cleared’ }); });
-
-// ─── Vizi isolated QA test endpoint
-─────────────────────────────────────────── // TESTING ONLY: Uses the
-same Vizi prompts/model as production, but keeps its // own conversation
-history and NEVER calls TTS or queues commands to the guitar. const
-viziTestSessions = new Map(); const VIZI_TEST_MAX_HISTORY = 20; const
-VIZI_TEST_TTL_MS = 30 * 60 * 1000;
-
-function getViziTestHistory(sessionId) { const id = String(sessionId ||
-‘default’).slice(0, 80); const now = Date.now(); let session =
-viziTestSessions.get(id);
-
-if (!session || now - session.lastActivity > VIZI_TEST_TTL_MS) { session
-= { history: [], lastActivity: now }; viziTestSessions.set(id, session);
+  if (fretboardQueue.length > FRETBOARD_QUEUE_MAX) {
+    fretboardQueue = fretboardQueue.slice(-FRETBOARD_QUEUE_MAX);
+  }
 }
 
-session.lastActivity = now; return session.history; }
+app.get('/fretboard-poll', (req, res) => {
+  const command = fretboardQueue.shift() || null;
 
-app.post(‘/vizi-test’, (req, res) => { let message = req.body &&
-req.body.message; const mode = (req.body && req.body.mode) || ‘general’;
-const sessionId = (req.body && req.body.sessionId) || ‘default’; const
-reset = !!(req.body && req.body.reset);
+  if (command) {
+    console.log(
+      '[FRETBOARD POLL] sending:',
+      command,
+      '| remaining:',
+      fretboardQueue.length
+    );
+  }
 
-if (!message) { return res.status(400).json({ error: ‘Missing message’
-}); }
+  res.json({
+    command,
+    remaining: fretboardQueue.length
+  });
+});
 
-if (!ANTHROPIC_API_KEY) { return res.status(500).json({ error:
-‘ANTHROPIC_API_KEY not set’ }); }
+app.post('/fretboard-command', (req, res) => {
+  const command = req.body && req.body.command;
 
-message = String(message).replace(/[]+/g, ’ ’).trim(); const history =
-getViziTestHistory(sessionId);
+  console.log(
+    '[FRETBOARD COMMAND] received:',
+    command || '(empty)'
+  );
 
-if (reset) history.length = 0; history.push({ role: ‘user’, content:
-message }); if (history.length > VIZI_TEST_MAX_HISTORY) {
-history.splice(0, history.length - VIZI_TEST_MAX_HISTORY); }
+  if (!command) {
+    return res.status(400).json({ error: 'Missing command' });
+  }
 
-const messages = history.map(m => ({ …m })); injectProgress( messages,
-req.body && req.body.progress, req.body && req.body.steps );
+  enqueueFretboardCommands(command);
 
-const systemText = buildSystemText(mode); const claudeBody =
-JSON.stringify({ model: ‘claude-haiku-4-5-20251001’, max_tokens: 1000,
-system: cachedSystem(systemText), messages });
+  console.log(
+    '[FRETBOARD COMMAND] queue now:',
+    JSON.stringify(fretboardQueue)
+  );
 
-const options = { hostname: ‘api.anthropic.com’, path: ‘/v1/messages’,
-method: ‘POST’, headers: { ‘Content-Type’: ‘application/json’,
-‘x-api-key’: ANTHROPIC_API_KEY, ‘anthropic-version’: ‘2023-06-01’,
-‘Content-Length’: Buffer.byteLength(claudeBody) } };
+  res.json({
+    status: 'queued',
+    command,
+    queued: fretboardQueue.length
+  });
+});
 
-const claudeReq = https.request(options, claudeRes => { let data = ’‘;
-claudeRes.on(’data’, chunk => { data += chunk; }); claudeRes.on(‘end’,
-() => { try { const parsed = JSON.parse(data); if (claudeRes.statusCode
-!== 200) { history.pop(); return res.status(claudeRes.statusCode).json({
-error: ‘Claude API error’, detail: parsed }); }
+app.post('/fretboard-clear', (req, res) => {
+  const cleared = fretboardQueue.length;
+  fretboardQueue = [];
+
+  console.log(`[fretboard-clear] Flushed ${cleared} queued command(s)`);
+
+  res.json({
+    status: 'ok',
+    cleared
+  });
+});
+
+app.get('/fretboard-clear', (req, res) => {
+  const cleared = fretboardQueue.length;
+  fretboardQueue = [];
+
+  console.log(
+    `[fretboard-clear GET] Flushed ${cleared} queued command(s)`,
+    '| user-agent:',
+    req.get('user-agent') || '',
+    '| referer:',
+    req.get('referer') || '',
+    '| ip:',
+    req.ip || ''
+  );
+
+  res.json({
+    status: 'ok',
+    cleared
+  });
+});
+
+// ─── Health ──────────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'Vizi TTS Proxy running',
+    voice: VOICE_NAME,
+    model: 'claude-haiku-4-5-20251001',
+    claudeReady: !!ANTHROPIC_API_KEY,
+    youtubeReady: !!YOUTUBE_API_KEY,
+    historyLength: conversationHistory.length,
+    historyIdleSecs: Math.floor((Date.now() - lastActivityTime) / 1000),
+    activeSessions: Object.keys(sessions).length,
+    multerReady: !!multer,
+    songPromptReady: !!SONG_PROMPT,
+    fretboardQueued: fretboardQueue.length
+  });
+});
+
+// ─── Reset ───────────────────────────────────────────────────────────────────
+app.post('/reset', (req, res) => {
+  conversationHistory = [];
+  lastActivityTime = Date.now();
+
+  console.log('Conversation history reset via POST');
+
+  res.json({
+    status: 'ok',
+    message: 'Conversation history cleared'
+  });
+});
+
+app.get('/reset', (req, res) => {
+  conversationHistory = [];
+  lastActivityTime = Date.now();
+
+  console.log('Conversation history reset via GET');
+
+  res.json({
+    status: 'ok',
+    message: 'Conversation history cleared'
+  });
+});
+
+// ─── Vizi isolated QA test endpoint ───────────────────────────────────────────
+// TESTING ONLY: Uses the same Vizi prompts/model as production, but keeps its
+// own conversation history and NEVER calls TTS or queues commands to the guitar.
+const viziTestSessions = new Map();
+const VIZI_TEST_MAX_HISTORY = 20;
+const VIZI_TEST_TTL_MS = 30 * 60 * 1000;
+
+function getViziTestHistory(sessionId) {
+  const id = String(sessionId || 'default').slice(0, 80);
+  const now = Date.now();
+  let session = viziTestSessions.get(id);
+
+  if (!session || now - session.lastActivity > VIZI_TEST_TTL_MS) {
+    session = { history: [], lastActivity: now };
+    viziTestSessions.set(id, session);
+  }
+
+  session.lastActivity = now;
+  return session.history;
+}
+
+app.post('/vizi-test', (req, res) => {
+  let message = req.body && req.body.message;
+  const mode = (req.body && req.body.mode) || 'general';
+  const sessionId = (req.body && req.body.sessionId) || 'default';
+  const reset = !!(req.body && req.body.reset);
+
+  if (!message) {
+    return res.status(400).json({ error: 'Missing message' });
+  }
+
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  }
+
+  message = String(message).replace(/[\r\n]+/g, ' ').trim();
+  const history = getViziTestHistory(sessionId);
+
+  if (reset) history.length = 0;
+  history.push({ role: 'user', content: message });
+  if (history.length > VIZI_TEST_MAX_HISTORY) {
+    history.splice(0, history.length - VIZI_TEST_MAX_HISTORY);
+  }
+
+  const messages = history.map(m => ({ ...m }));
+  injectProgress(
+    messages,
+    req.body && req.body.progress,
+    req.body && req.body.steps
+  );
+
+  const systemText = buildSystemText(mode);
+  const claudeBody = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1000,
+    system: cachedSystem(systemText),
+    messages
+  });
+
+  const options = {
+    hostname: 'api.anthropic.com',
+    path: '/v1/messages',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Length': Buffer.byteLength(claudeBody)
+    }
+  };
+
+  const claudeReq = https.request(options, claudeRes => {
+    let data = '';
+    claudeRes.on('data', chunk => { data += chunk; });
+    claudeRes.on('end', () => {
+      try {
+        const parsed = JSON.parse(data);
+        if (claudeRes.statusCode !== 200) {
+          history.pop();
+          return res.status(claudeRes.statusCode).json({
+            error: 'Claude API error',
+            detail: parsed
+          });
+        }
 
         logClaudeCache('vizi-test', parsed.usage);
         const rawFullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
@@ -498,31 +678,45 @@ error: ‘Claude API error’, detail: parsed }); }
         res.status(500).json({ error: 'Parse error', detail: err.message });
       }
     });
+  });
 
+  claudeReq.on('error', err => {
+    history.pop();
+    res.status(500).json({ error: 'Claude request failed', detail: err.message });
+  });
+
+  claudeReq.write(claudeBody);
+  claudeReq.end();
 });
 
-claudeReq.on(‘error’, err => { history.pop(); res.status(500).json({
-error: ‘Claude request failed’, detail: err.message }); });
+app.post('/vizi-test-reset', (req, res) => {
+  const sessionId = String((req.body && req.body.sessionId) || 'default').slice(0, 80);
+  viziTestSessions.delete(sessionId);
+  res.json({ status: 'ok', sessionId, message: 'Vizi test conversation cleared' });
+});
 
-claudeReq.write(claudeBody); claudeReq.end(); });
+// ─── Spoken chord normalization ──────────────────────────────────────────────
+function speakableChords(text) {
+  if (!text) return text;
 
-app.post(‘/vizi-test-reset’, (req, res) => { const sessionId =
-String((req.body && req.body.sessionId) || ‘default’).slice(0, 80);
-viziTestSessions.delete(sessionId); res.json({ status: ‘ok’, sessionId,
-message: ‘Vizi test conversation cleared’ }); });
+  const NOTE = '[A-G](?:#|b)?';
 
-// ─── Spoken chord normalization
-────────────────────────────────────────────── function
-speakableChords(text) { if (!text) return text;
+  const numWord = {
+    '2': 'two',
+    '4': 'four',
+    '5': 'five',
+    '6': 'six',
+    '7': 'seven',
+    '9': 'nine',
+    '11': 'eleven',
+    '13': 'thirteen'
+  };
 
-const NOTE = ‘A-G?’;
+  const acc = n =>
+    n.replace('#', ' sharp').replace(/b$/, ' flat');
 
-const numWord = { ‘2’: ‘two’, ‘4’: ‘four’, ‘5’: ‘five’, ‘6’: ‘six’, ‘7’:
-‘seven’, ‘9’: ‘nine’, ‘11’: ‘eleven’, ‘13’: ‘thirteen’ };
-
-const acc = n => n.replace(‘#’, ’ sharp’).replace(/b$/, ’ flat’);
-
-const spell = (note, q) => { let out = acc(note);
+  const spell = (note, q) => {
+    let out = acc(note);
 
     switch (q) {
       case 'm':
@@ -558,42 +752,65 @@ const spell = (note, q) => { let out = acc(note);
     }
 
     return out;
+  };
 
-};
+  const QUAL =
+    '(?:maj7|m7|add9|sus2|sus4|dim|aug|m|7|6|9|11|13)';
 
-const QUAL = ‘(?:maj7|m7|add9|sus2|sus4|dim|aug|m|7|6|9|11|13)’;
+  text = text.replace(
+    new RegExp('\\b(' + NOTE + ')(' + QUAL + ')?\\/(' + NOTE + ')\\b', 'g'),
+    (_, a, q, b) => spell(a, q) + ' over ' + acc(b)
+  );
 
-text = text.replace( new RegExp(‘\b(’ + NOTE + ‘)(’ + QUAL + ‘)?\/(’ +
-NOTE + ‘)\b’, ‘g’), (_, a, q, b) => spell(a, q) + ’ over ’ + acc(b) );
+  text = text.replace(
+    new RegExp('\\b(' + NOTE + ')(' + QUAL + ')\\b', 'g'),
+    (_, a, q) => spell(a, q)
+  );
 
-text = text.replace( new RegExp(‘\b(’ + NOTE + ‘)(’ + QUAL + ‘)\b’,
-‘g’), (_, a, q) => spell(a, q) );
+  text = text.replace(/\b([A-G])#/g, '$1 sharp');
+  text = text.replace(/\b([A-G])b\b/g, '$1 flat');
 
-text = text.replace(/[A-G])#/g, ‘$1 sharp’); text =
-text.replace(/[A-G])bg, ‘$1 flat’);
+  return text;
+}
 
-return text; }
+// ─── Google TTS helper ───────────────────────────────────────────────────────
+function synthesize(text, res) {
+  text = speakableChords(text);
 
-// ─── Google TTS helper
-─────────────────────────────────────────────────────── function
-synthesize(text, res) { text = speakableChords(text);
+  console.log('Synthesizing:', text.slice(0, 80));
 
-console.log(‘Synthesizing:’, text.slice(0, 80));
+  if (!GOOGLE_API_KEY) {
+    return res.status(500).json({
+      error: 'GOOGLE_API_KEY not set'
+    });
+  }
 
-if (!GOOGLE_API_KEY) { return res.status(500).json({ error:
-‘GOOGLE_API_KEY not set’ }); }
+  const requestBody = JSON.stringify({
+    input: { text },
+    voice: {
+      languageCode: LANGUAGE_CODE,
+      name: VOICE_NAME
+    },
+    audioConfig: {
+      audioEncoding: 'MP3'
+    }
+  });
 
-const requestBody = JSON.stringify({ input: { text }, voice: {
-languageCode: LANGUAGE_CODE, name: VOICE_NAME }, audioConfig: {
-audioEncoding: ‘MP3’ } });
+  const options = {
+    hostname: 'texttospeech.googleapis.com',
+    path:
+      '/v1/text:synthesize?key=' +
+      encodeURIComponent(GOOGLE_API_KEY),
+    method: 'POST',
+    agent: googleAgent,
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(requestBody)
+    }
+  };
 
-const options = { hostname: ‘texttospeech.googleapis.com’, path:
-‘/v1/text:synthesize?key=’ + encodeURIComponent(GOOGLE_API_KEY), method:
-‘POST’, agent: googleAgent, headers: { ‘Content-Type’:
-‘application/json’, ‘Content-Length’: Buffer.byteLength(requestBody) }
-};
-
-const googleReq = https.request(options, googleRes => { let data = ’’;
+  const googleReq = https.request(options, googleRes => {
+    let data = '';
 
     googleRes.on('data', chunk => {
       data += chunk;
@@ -634,20 +851,29 @@ const googleReq = https.request(options, googleRes => { let data = ’’;
         });
       }
     });
+  });
 
-});
+  googleReq.on('error', err => {
+    res.status(500).json({
+      error: 'Google TTS request failed',
+      detail: err.message
+    });
+  });
 
-googleReq.on(‘error’, err => { res.status(500).json({ error: ‘Google TTS
-request failed’, detail: err.message }); });
+  googleReq.write(requestBody);
+  googleReq.end();
+}
 
-googleReq.write(requestBody); googleReq.end(); }
+// ─── Promise TTS helper ──────────────────────────────────────────────────────
+function synthesizeToBuffer(text) {
+  text = speakableChords(text);
 
-// ─── Promise TTS helper
-────────────────────────────────────────────────────── function
-synthesizeToBuffer(text) { text = speakableChords(text);
-
-return new Promise((resolve, reject) => { if (!GOOGLE_API_KEY) { return
-reject( new Error(‘GOOGLE_API_KEY not set’) ); }
+  return new Promise((resolve, reject) => {
+    if (!GOOGLE_API_KEY) {
+      return reject(
+        new Error('GOOGLE_API_KEY not set')
+      );
+    }
 
     const requestBody = JSON.stringify({
       input: { text },
@@ -706,65 +932,113 @@ reject( new Error(‘GOOGLE_API_KEY not set’) ); }
 
     googleReq.write(requestBody);
     googleReq.end();
+  });
+}
 
-}); }
+app.get('/tts', (req, res) => {
+  const text = req.query.text;
 
-app.get(‘/tts’, (req, res) => { const text = req.query.text;
+  if (!text) {
+    return res.status(400).json({
+      error: 'Missing text parameter'
+    });
+  }
 
-if (!text) { return res.status(400).json({ error: ‘Missing text
-parameter’ }); }
+  synthesize(text, res);
+});
 
-synthesize(text, res); });
+app.post('/tts', (req, res) => {
+  let text;
 
-app.post(‘/tts’, (req, res) => { let text;
+  if (typeof req.body === 'string') {
+    try {
+      text = JSON.parse(req.body).text;
+    } catch(e) {
+      text = req.body;
+    }
+  } else {
+    text = req.body && req.body.text;
+  }
 
-if (typeof req.body === ‘string’) { try { text =
-JSON.parse(req.body).text; } catch(e) { text = req.body; } } else { text
-= req.body && req.body.text; }
+  if (!text) {
+    return res.status(400).json({
+      error: 'Missing text parameter'
+    });
+  }
 
-if (!text) { return res.status(400).json({ error: ‘Missing text
-parameter’ }); }
+  synthesize(text, res);
+});
 
-synthesize(text, res); });
+// ─── Claude + TTS combined ───────────────────────────────────────────────────
+app.post('/claude-tts', (req, res) => {
+  let message = req.body && req.body.message;
+  const mode  = req.body && req.body.mode;
 
-// ─── Claude + TTS combined
-───────────────────────────────────────────────────
-app.post(‘/claude-tts’, (req, res) => { let message = req.body &&
-req.body.message; const mode = req.body && req.body.mode;
+  console.log(
+    'POST /claude-tts mode:',
+    mode,
+    'message:',
+    message && message.slice(0, 80)
+  );
 
-console.log( ‘POST /claude-tts mode:’, mode, ‘message:’, message &&
-message.slice(0, 80) );
+  if (!message) {
+    return res.status(400).json({
+      error: 'Missing message'
+    });
+  }
 
-if (!message) { return res.status(400).json({ error: ‘Missing message’
-}); }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({
+      error: 'ANTHROPIC_API_KEY not set'
+    });
+  }
 
-if (!ANTHROPIC_API_KEY) { return res.status(500).json({ error:
-‘ANTHROPIC_API_KEY not set’ }); }
+  if (!GOOGLE_API_KEY) {
+    return res.status(500).json({
+      error: 'GOOGLE_API_KEY not set'
+    });
+  }
 
-if (!GOOGLE_API_KEY) { return res.status(500).json({ error:
-‘GOOGLE_API_KEY not set’ }); }
+  message = message
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
 
-message = message .replace(/[]+/g, ’ ’) .trim();
+  const systemText = buildSystemText(mode);
 
-const systemText = buildSystemText(mode);
+  getHistory();
+  addToHistory('user', message);
 
-getHistory(); addToHistory(‘user’, message);
+  const messages = [...conversationHistory];
 
-const messages = […conversationHistory];
+  injectProgress(
+    messages,
+    req.body && req.body.progress,
+    req.body && req.body.steps
+  );
 
-injectProgress( messages, req.body && req.body.progress, req.body &&
-req.body.steps );
+  const claudeBody = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1000,
+    system: cachedSystem(systemText),
+    messages
+  });
 
-const claudeBody = JSON.stringify({ model: ‘claude-haiku-4-5-20251001’,
-max_tokens: 1000, system: cachedSystem(systemText), messages });
+  const claudeOptions = {
+    hostname: 'api.anthropic.com',
+    path: '/v1/messages',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Length': Buffer.byteLength(claudeBody)
+    }
+  };
 
-const claudeOptions = { hostname: ‘api.anthropic.com’, path:
-‘/v1/messages’, method: ‘POST’, headers: { ‘Content-Type’:
-‘application/json’, ‘x-api-key’: ANTHROPIC_API_KEY, ‘anthropic-version’:
-‘2023-06-01’, ‘Content-Length’: Buffer.byteLength(claudeBody) } };
-
-const claudeReq = https.request( claudeOptions, claudeRes => { let data
-= ’’;
+  const claudeReq = https.request(
+    claudeOptions,
+    claudeRes => {
+      let data = '';
 
       claudeRes.on('data', chunk => {
         data += chunk;
@@ -869,50 +1143,79 @@ const claudeReq = https.request( claudeOptions, claudeRes => { let data
         }
       });
     }
+  );
 
-);
-
-claudeReq.on(‘error’, err => { conversationHistory.pop();
+  claudeReq.on('error', err => {
+    conversationHistory.pop();
 
     res.status(500).json({
       error: 'Claude request failed',
       detail: err.message
     });
+  });
 
+  claudeReq.write(claudeBody);
+  claudeReq.end();
 });
 
-claudeReq.write(claudeBody); claudeReq.end(); });
+// ─── STT + Claude + TTS ──────────────────────────────────────────────────────
+app.post('/stt-claude-tts', async (req, res) => {
+  const tHandlerStart = Date.now();
 
-// ─── STT + Claude + TTS
-──────────────────────────────────────────────────────
-app.post(‘/stt-claude-tts’, async (req, res) => { const tHandlerStart =
-Date.now();
+  const audioContent =
+    req.body && req.body.audio;
 
-const audioContent = req.body && req.body.audio;
+  const sampleRate =
+    (req.body && req.body.sampleRate) ||
+    17000;
 
-const sampleRate = (req.body && req.body.sampleRate) || 17000;
+  const mode =
+    (req.body && req.body.mode) ||
+    'general';
 
-const mode = (req.body && req.body.mode) || ‘general’;
+  console.log(
+    'POST /stt-claude-tts sampleRate:',
+    sampleRate,
+    'audioLen:',
+    audioContent && audioContent.length
+  );
 
-console.log( ‘POST /stt-claude-tts sampleRate:’, sampleRate,
-‘audioLen:’, audioContent && audioContent.length );
+  if (!audioContent) {
+    return res.status(400).json({
+      error: 'Missing audio content'
+    });
+  }
 
-if (!audioContent) { return res.status(400).json({ error: ‘Missing audio
-content’ }); }
+  if (!GOOGLE_API_KEY) {
+    return res.status(500).json({
+      error: 'GOOGLE_API_KEY not set'
+    });
+  }
 
-if (!GOOGLE_API_KEY) { return res.status(500).json({ error:
-‘GOOGLE_API_KEY not set’ }); }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({
+      error: 'ANTHROPIC_API_KEY not set'
+    });
+  }
 
-if (!ANTHROPIC_API_KEY) { return res.status(500).json({ error:
-‘ANTHROPIC_API_KEY not set’ }); }
+  // ── Step 1: STT ──
+  const tSttStart = Date.now();
 
-// ── Step 1: STT ── const tSttStart = Date.now();
+  let transcript = '';
+  let tSttEnd = null;
 
-let transcript = ’’; let tSttEnd = null;
-
-try { const sttBody = JSON.stringify({ config: { encoding: ‘LINEAR16’,
-sampleRateHertz: sampleRate, languageCode: ‘en-US’, model: ‘default’ },
-audio: { content: audioContent } });
+  try {
+    const sttBody = JSON.stringify({
+      config: {
+        encoding: 'LINEAR16',
+        sampleRateHertz: sampleRate,
+        languageCode: 'en-US',
+        model: 'default'
+      },
+      audio: {
+        content: audioContent
+      }
+    });
 
     transcript = await new Promise(
       (resolve, reject) => {
@@ -986,29 +1289,45 @@ audio: { content: audioContent } });
         sttReq.end();
       }
     );
-
-} catch (err) { console.error( ‘STT error:’, err.message );
+  } catch (err) {
+    console.error(
+      'STT error:',
+      err.message
+    );
 
     return res.status(500).json({
       error: 'STT failed',
       detail: err.message
     });
+  }
 
-}
+  tSttEnd = Date.now();
 
-tSttEnd = Date.now();
+  console.log(
+    'STT transcript:',
+    transcript,
+    `(${tSttEnd - tSttStart}ms)`
+  );
 
-console.log( ‘STT transcript:’, transcript, (${tSttEnd - tSttStart}ms)
-);
+  if (
+    !transcript ||
+    transcript.trim().length === 0
+  ) {
+    return res.json({
+      transcript: '',
+      empty: true
+    });
+  }
 
-if ( !transcript || transcript.trim().length === 0 ) { return res.json({
-transcript: ’’, empty: true }); }
+  // ── Step 2: Claude ──
+  const tClaudeStart = Date.now();
 
-// ── Step 2: Claude ── const tClaudeStart = Date.now();
+  let tClaudeEnd = null;
+  let fullText = '';
 
-let tClaudeEnd = null; let fullText = ’’;
-
-try { const systemText = buildSystemText(mode);
+  try {
+    const systemText =
+      buildSystemText(mode);
 
     getHistory();
 
@@ -1131,40 +1450,55 @@ try { const systemText = buildSystemText(mode);
         claudeReq.end();
       }
     );
-
-} catch (err) { console.error( ‘Claude error:’, err.message );
+  } catch (err) {
+    console.error(
+      'Claude error:',
+      err.message
+    );
 
     return res.status(500).json({
       error: 'Claude failed',
       detail: err.message
     });
+  }
 
-}
+  tClaudeEnd = Date.now();
 
-tClaudeEnd = Date.now();
+  // ── Step 3: TTS ──
+  const parsedPipe = parsePipeResponse(fullText);
+  const recoveredPipe = recoverMisplacedViziCommand(parsedPipe);
+  const spoken = recoveredPipe.spoken;
+  const rawCommands = recoveredPipe.commands;
 
-// ── Step 3: TTS ── const parsedPipe = parsePipeResponse(fullText);
-const recoveredPipe = recoverMisplacedViziCommand(parsedPipe); const
-spoken = recoveredPipe.spoken; const rawCommands =
-recoveredPipe.commands;
+  const validation = validateViziCommands(rawCommands, {
+    mode,
+    steps: req.body && req.body.steps,
+    userMessage: transcript
+  });
+  const commands = validation.commands;
+  const normalizedAssistantText = normalizedPipeResponse(spoken, commands);
+  addToHistory('assistant', normalizedAssistantText);
 
-const validation = validateViziCommands(rawCommands, { mode, steps:
-req.body && req.body.steps, userMessage: transcript }); const commands =
-validation.commands; const normalizedAssistantText =
-normalizedPipeResponse(spoken, commands); addToHistory(‘assistant’,
-normalizedAssistantText);
+  if (validation.blocked) {
+    console.warn('[VIZI COMMAND BLOCKED]', validation.reason, '| raw:', rawCommands);
+  }
 
-if (validation.blocked) { console.warn(‘[VIZI COMMAND BLOCKED]’,
-validation.reason, ‘| raw:’, rawCommands); }
+  enqueueFretboardCommands(
+    commands
+  );
 
-enqueueFretboardCommands( commands );
+  if (!spoken) {
+    return res.status(500).json({
+      error:
+        'Empty spoken text from Claude'
+    });
+  }
 
-if (!spoken) { return res.status(500).json({ error: ‘Empty spoken text
-from Claude’ }); }
+  const tTtsStart = Date.now();
 
-const tTtsStart = Date.now();
-
-try { const audioBuffer = await synthesizeToBuffer(spoken);
+  try {
+    const audioBuffer =
+      await synthesizeToBuffer(spoken);
 
     const tTtsEnd = Date.now();
 
@@ -1215,40 +1549,77 @@ try { const audioBuffer = await synthesizeToBuffer(spoken);
     });
 
     res.send(audioBuffer);
-
-} catch (err) { console.error( ‘TTS error:’, err.message );
+  } catch (err) {
+    console.error(
+      'TTS error:',
+      err.message
+    );
 
     res.status(500).json({
       error: 'TTS failed',
       detail: err.message
     });
+  }
+});
 
-} });
+// ─── Google STT standalone ───────────────────────────────────────────────────
+app.post('/stt', (req, res) => {
+  console.log('POST /stt received');
 
-// ─── Google STT standalone
-─────────────────────────────────────────────────── app.post(‘/stt’,
-(req, res) => { console.log(‘POST /stt received’);
+  if (!GOOGLE_API_KEY) {
+    return res.status(500).json({
+      error: 'GOOGLE_API_KEY not set'
+    });
+  }
 
-if (!GOOGLE_API_KEY) { return res.status(500).json({ error:
-‘GOOGLE_API_KEY not set’ }); }
+  const audioContent =
+    req.body && req.body.audio;
 
-const audioContent = req.body && req.body.audio;
+  const sampleRate =
+    (req.body && req.body.sampleRate) ||
+    17000;
 
-const sampleRate = (req.body && req.body.sampleRate) || 17000;
+  if (!audioContent) {
+    return res.status(400).json({
+      error: 'Missing audio content'
+    });
+  }
 
-if (!audioContent) { return res.status(400).json({ error: ‘Missing audio
-content’ }); }
+  const sttBody = JSON.stringify({
+    config: {
+      encoding: 'LINEAR16',
+      sampleRateHertz: sampleRate,
+      languageCode: 'en-US',
+      model: 'default'
+    },
+    audio: {
+      content: audioContent
+    }
+  });
 
-const sttBody = JSON.stringify({ config: { encoding: ‘LINEAR16’,
-sampleRateHertz: sampleRate, languageCode: ‘en-US’, model: ‘default’ },
-audio: { content: audioContent } });
+  const options = {
+    hostname:
+      'speech.googleapis.com',
+    path:
+      '/v1/speech:recognize?key=' +
+      encodeURIComponent(
+        GOOGLE_API_KEY
+      ),
+    method: 'POST',
+    agent: googleAgent,
+    headers: {
+      'Content-Type':
+        'application/json',
+      'Content-Length':
+        Buffer.byteLength(sttBody)
+    }
+  };
 
-const options = { hostname: ‘speech.googleapis.com’, path:
-‘/v1/speech:recognize?key=’ + encodeURIComponent( GOOGLE_API_KEY ),
-method: ‘POST’, agent: googleAgent, headers: { ‘Content-Type’:
-‘application/json’, ‘Content-Length’: Buffer.byteLength(sttBody) } };
-
-const googleReq = https.request( options, googleRes => { let data = ’’;
+  const googleReq =
+    https.request(
+      options,
+      googleRes => {
+        let data = '';
 
         googleRes.on(
           'data',
@@ -1318,28 +1689,54 @@ const googleReq = https.request( options, googleRes => { let data = ’’;
       }
     );
 
-googleReq.on( ‘error’, err => { res.status(500).json({ error: ‘STT
-request failed’, detail: err.message }); } );
+  googleReq.on(
+    'error',
+    err => {
+      res.status(500).json({
+        error:
+          'STT request failed',
+        detail: err.message
+      });
+    }
+  );
 
-googleReq.write(sttBody); googleReq.end(); });
+  googleReq.write(sttBody);
+  googleReq.end();
+});
 
-// ─── Song Preview
-────────────────────────────────────────────────────────────
-app.post(‘/song-preview’, async (req, res) => { const query = req.body
-&& req.body.query;
+// ─── Song Preview ────────────────────────────────────────────────────────────
+app.post('/song-preview', async (req, res) => {
+  const query =
+    req.body && req.body.query;
 
-if (!query) { return res.status(400).json({ error: ‘Missing query’ }); }
+  if (!query) {
+    return res.status(400).json({
+      error: 'Missing query'
+    });
+  }
 
-const fallbackUrl = ‘https://www.youtube.com/results?search_query=’ +
-encodeURIComponent(query);
+  const fallbackUrl =
+    'https://www.youtube.com/results?search_query=' +
+    encodeURIComponent(query);
 
-if (!YOUTUBE_API_KEY) { return res.json({ videoUrl: fallbackUrl, title:
-query, query, fallback: true }); }
+  if (!YOUTUBE_API_KEY) {
+    return res.json({
+      videoUrl: fallbackUrl,
+      title: query,
+      query,
+      fallback: true
+    });
+  }
 
-try { const searchPath =
-‘/youtube/v3/search?part=snippet&type=video&maxResults=1’ + ‘&q=’ +
-encodeURIComponent(query) + ‘&key=’ + encodeURIComponent(
-YOUTUBE_API_KEY );
+  try {
+    const searchPath =
+      '/youtube/v3/search?part=snippet&type=video&maxResults=1' +
+      '&q=' +
+      encodeURIComponent(query) +
+      '&key=' +
+      encodeURIComponent(
+        YOUTUBE_API_KEY
+      );
 
     const result =
       await new Promise(
@@ -1420,45 +1817,97 @@ YOUTUBE_API_KEY );
       query,
       fallback: false
     });
+  } catch (err) {
+    res.json({
+      videoUrl: fallbackUrl,
+      title: query,
+      query,
+      fallback: true
+    });
+  }
+});
 
-} catch (err) { res.json({ videoUrl: fallbackUrl, title: query, query,
-fallback: true }); } });
+// ─── Claude standalone ───────────────────────────────────────────────────────
+app.post('/claude', (req, res) => {
+  let message =
+    req.body && req.body.message;
 
-// ─── Claude standalone
-───────────────────────────────────────────────────────
-app.post(‘/claude’, (req, res) => { let message = req.body &&
-req.body.message;
+  const mode =
+    req.body && req.body.mode;
 
-const mode = req.body && req.body.mode;
+  if (!message) {
+    return res.status(400).json({
+      error: 'Missing message'
+    });
+  }
 
-if (!message) { return res.status(400).json({ error: ‘Missing message’
-}); }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({
+      error:
+        'ANTHROPIC_API_KEY not set'
+    });
+  }
 
-if (!ANTHROPIC_API_KEY) { return res.status(500).json({ error:
-‘ANTHROPIC_API_KEY not set’ }); }
+  message = message
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
 
-message = message .replace(/[]+/g, ’ ’) .trim();
+  const systemText =
+    buildSystemText(mode);
 
-const systemText = buildSystemText(mode);
+  getHistory();
 
-getHistory();
+  addToHistory(
+    'user',
+    message
+  );
 
-addToHistory( ‘user’, message );
+  const messages = [
+    ...conversationHistory
+  ];
 
-const messages = [ …conversationHistory ];
+  injectProgress(
+    messages,
+    req.body && req.body.progress,
+    req.body && req.body.steps
+  );
 
-injectProgress( messages, req.body && req.body.progress, req.body &&
-req.body.steps );
+  const claudeBody =
+    JSON.stringify({
+      model:
+        'claude-haiku-4-5-20251001',
+      max_tokens: 1000,
+      system:
+        cachedSystem(systemText),
+      messages
+    });
 
-const claudeBody = JSON.stringify({ model: ‘claude-haiku-4-5-20251001’,
-max_tokens: 1000, system: cachedSystem(systemText), messages });
+  const options = {
+    hostname:
+      'api.anthropic.com',
+    path:
+      '/v1/messages',
+    method:
+      'POST',
+    headers: {
+      'Content-Type':
+        'application/json',
+      'x-api-key':
+        ANTHROPIC_API_KEY,
+      'anthropic-version':
+        '2023-06-01',
+      'Content-Length':
+        Buffer.byteLength(
+          claudeBody
+        )
+    }
+  };
 
-const options = { hostname: ‘api.anthropic.com’, path: ‘/v1/messages’,
-method: ‘POST’, headers: { ‘Content-Type’: ‘application/json’,
-‘x-api-key’: ANTHROPIC_API_KEY, ‘anthropic-version’: ‘2023-06-01’,
-‘Content-Length’: Buffer.byteLength( claudeBody ) } };
-
-const claudeReq = https.request( options, claudeRes => { let data = ’’;
+  const claudeReq =
+    https.request(
+      options,
+      claudeRes => {
+        let data = '';
 
         claudeRes.on(
           'data',
@@ -1525,7 +1974,10 @@ const claudeReq = https.request( options, claudeRes => { let data = ’’;
       }
     );
 
-claudeReq.on( ‘error’, err => { conversationHistory.pop();
+  claudeReq.on(
+    'error',
+    err => {
+      conversationHistory.pop();
 
       res.status(500).json({
         error:
@@ -1533,188 +1985,420 @@ claudeReq.on( ‘error’, err => { conversationHistory.pop();
         detail: err.message
       });
     }
+  );
 
-);
+  claudeReq.write(claudeBody);
+  claudeReq.end();
+});
 
-claudeReq.write(claudeBody); claudeReq.end(); });
+// ─── Session endpoints ───────────────────────────────────────────────────────
+app.post('/session-create', (req, res) => {
+  const songTitle =
+    (req.body &&
+      req.body.songTitle) ||
+    '';
 
-// ─── Session endpoints
-───────────────────────────────────────────────────────
-app.post(‘/session-create’, (req, res) => { const songTitle = (req.body
-&& req.body.songTitle) || ’’;
+  const id =
+    createSession(songTitle);
 
-const id = createSession(songTitle);
+  res.json({
+    sessionId: id,
+    uploadUrl:
+      `https://aivisualguitar.com/upload?session=${id}`,
+    qrContent:
+      `https://aivisualguitar.com/upload?session=${id}`
+  });
+});
 
-res.json({ sessionId: id, uploadUrl:
-https://aivisualguitar.com/upload?session=${id}, qrContent:
-https://aivisualguitar.com/upload?session=${id} }); });
+app.get('/session-create', (req, res) => {
+  const songTitle =
+    req.query.song || '';
 
-app.get(‘/session-create’, (req, res) => { const songTitle =
-req.query.song || ’’;
+  const id =
+    createSession(songTitle);
 
-const id = createSession(songTitle);
+  res.json({
+    sessionId: id,
+    uploadUrl:
+      `https://aivisualguitar.com/upload?session=${id}`,
+    qrContent:
+      `https://aivisualguitar.com/upload?session=${id}`
+  });
+});
 
-res.json({ sessionId: id, uploadUrl:
-https://aivisualguitar.com/upload?session=${id}, qrContent:
-https://aivisualguitar.com/upload?session=${id} }); });
+app.get('/session-status/:id', (req, res) => {
+  const id =
+    req.params.id
+      .trim()
+      .toUpperCase();
 
-app.get(‘/session-status/:id’, (req, res) => { const id = req.params.id
-.trim() .toUpperCase();
+  const session =
+    sessions[id];
 
-const session = sessions[id];
+  if (!session) {
+    return res
+      .status(404)
+      .json({
+        error:
+          'Session not found',
+        id
+      });
+  }
 
-if (!session) { return res .status(404) .json({ error: ‘Session not
-found’, id }); }
+  res.json({
+    sessionId: id,
+    status:
+      session.status,
+    songTitle:
+      session.songTitle,
+    type:
+      session.type,
+    chords:
+      session.chords,
+    progression:
+      session.progression,
+    tabTokens:
+      session.tabTokens,
+    error:
+      session.error
+  });
+});
 
-res.json({ sessionId: id, status: session.status, songTitle:
-session.songTitle, type: session.type, chords: session.chords,
-progression: session.progression, tabTokens: session.tabTokens, error:
-session.error }); });
+// ─── Strumming patterns ──────────────────────────────────────────────────────
+const STRUM_PATTERNS = {
+  'Pattern 1 — All Down': {
+    name: 'All Down',
+    arrows: '↓ ↓ ↓ ↓',
+    counts: '1 2 3 4',
+    spoken:
+      'down, down, down, down'
+  },
 
-// ─── Strumming patterns
-────────────────────────────────────────────────────── const
-STRUM_PATTERNS = { ‘Pattern 1 — All Down’: { name: ‘All Down’, arrows:
-‘↓ ↓ ↓ ↓’, counts: ‘1 2 3 4’, spoken: ‘down, down, down, down’ },
+  'Pattern 2 — Down Up': {
+    name: 'Down Up',
+    arrows: '↓ ↑ ↓ ↑',
+    counts: '1 and 2 and',
+    spoken:
+      'down, up, down, up'
+  },
 
-‘Pattern 2 — Down Up’: { name: ‘Down Up’, arrows: ‘↓ ↑ ↓ ↑’, counts: ‘1
-and 2 and’, spoken: ‘down, up, down, up’ },
+  'Pattern 3 — Common Pop Rock': {
+    name: 'Common Pop Rock',
+    arrows: '↓ ↓ ↑ ↑ ↓ ↑',
+    counts:
+      '1 2 and and 4 and',
+    spoken:
+      'down, down, up, up, down, up'
+  },
 
-‘Pattern 3 — Common Pop Rock’: { name: ‘Common Pop Rock’, arrows: ‘↓ ↓ ↑
-↑ ↓ ↑’, counts: ‘1 2 and and 4 and’, spoken: ‘down, down, up, up, down,
-up’ },
+  'Pattern 4 — Reggae Skank': {
+    name: 'Reggae Skank',
+    arrows: '✗ ↑ ✗ ↑',
+    counts: '1 and 2 and',
+    spoken:
+      'skip, up, skip, up'
+  },
 
-‘Pattern 4 — Reggae Skank’: { name: ‘Reggae Skank’, arrows: ‘✗ ↑ ✗ ↑’,
-counts: ‘1 and 2 and’, spoken: ‘skip, up, skip, up’ },
+  'Pattern 5 — Ballad': {
+    name: 'Ballad',
+    arrows: '↓ ↓ ↑ ↓ ↑',
+    counts: '1 2 and 3 and',
+    spoken:
+      'down, down, up, down, up'
+  }
+};
 
-‘Pattern 5 — Ballad’: { name: ‘Ballad’, arrows: ‘↓ ↓ ↑ ↓ ↑’, counts: ‘1
-2 and 3 and’, spoken: ‘down, down, up, down, up’ } };
+// ─── Song prompt endpoint ────────────────────────────────────────────────────
+app.get('/session-prompt/:id', (req, res) => {
+  const id =
+    req.params.id
+      .trim()
+      .toUpperCase();
 
-// ─── Song prompt endpoint
-────────────────────────────────────────────────────
-app.get(‘/session-prompt/:id’, (req, res) => { const id = req.params.id
-.trim() .toUpperCase();
+  const session =
+    sessions[id];
 
-const session = sessions[id];
+  if (!session) {
+    return res
+      .status(404)
+      .json({
+        ready: false,
+        error:
+          'Session not found',
+        id
+      });
+  }
 
-if (!session) { return res .status(404) .json({ ready: false, error:
-‘Session not found’, id }); }
+  if (
+    session.status !==
+    'ready'
+  ) {
+    return res.json({
+      ready: false,
+      status:
+        session.status,
+      id
+    });
+  }
 
-if ( session.status !== ‘ready’ ) { return res.json({ ready: false,
-status: session.status, id }); }
+  const songTitle =
+    session.songTitle ||
+    'this song';
 
-const songTitle = session.songTitle || ‘this song’;
+  const progression =
+    session.progression ||
+    '';
 
-const progression = session.progression || ’’;
+  const type =
+    session.type ||
+    'chords';
 
-const type = session.type || ‘chords’;
+  const chords =
+    session.chords ||
+    [];
 
-const chords = session.chords || [];
+  const capo =
+    session.capo ||
+    0;
 
-const capo = session.capo || 0;
+  const key =
+    session.key ||
+    '';
 
-const key = session.key || ’’;
+  const timeSignature =
+    session.timeSignature ||
+    '';
 
-const timeSignature = session.timeSignature || ’’;
+  const strummingPattern =
+    session.strummingPattern ||
+    '';
 
-const strummingPattern = session.strummingPattern || ’’;
+  const suggestedBpm =
+    session.suggestedBpm;
 
-const suggestedBpm = session.suggestedBpm;
+  const chordList =
+    chords.length > 0
+      ? chords.join(', ')
+      : 'various chords';
 
-const chordList = chords.length > 0 ? chords.join(‘,’) : ‘various
-chords’;
+  const patternInfo =
+    STRUM_PATTERNS[
+      strummingPattern
+    ] || null;
 
-const patternInfo = STRUM_PATTERNS[ strummingPattern ] || null;
+  let message =
+    'SONG RECEIVED: ' +
+    songTitle +
+    '. ';
 
-let message = ‘SONG RECEIVED:’ + songTitle + ‘.’;
+  if (progression) {
+    message +=
+      'Full progression data: ' +
+      progression +
+      '. ';
+  }
 
-if (progression) { message += ‘Full progression data:’ + progression +
-‘.’; }
+  message +=
+    'Unique chords in this song: ' +
+    chordList +
+    '. ';
 
-message += ‘Unique chords in this song:’ + chordList + ‘.’;
+  if (key) {
+    message +=
+      'Estimated key: ' +
+      key +
+      '. ';
+  }
 
-if (key) { message += ‘Estimated key:’ + key + ‘.’; }
+  if (timeSignature) {
+    message +=
+      'Time signature: ' +
+      timeSignature +
+      '. ';
+  }
 
-if (timeSignature) { message += ‘Time signature:’ + timeSignature + ‘.’;
-}
-
-if (patternInfo) { message += ‘Suggested strumming pattern:’ +
-patternInfo.name + ’ — the motion is ’ + patternInfo.spoken + ‘.’;
+  if (patternInfo) {
+    message +=
+      'Suggested strumming pattern: ' +
+      patternInfo.name +
+      ' — the motion is ' +
+      patternInfo.spoken +
+      '. ';
 
     message +=
       'This exact pattern is shown visually on screen. ';
+  }
 
-}
+  if (suggestedBpm) {
+    message +=
+      'Suggested metronome tempo: ' +
+      suggestedBpm +
+      ' BPM. ';
+  }
 
-if (suggestedBpm) { message += ‘Suggested metronome tempo:’ +
-suggestedBpm + ’ BPM. ’; }
+  if (capo > 0) {
+    message +=
+      'Capo is on fret ' +
+      capo +
+      '. ';
+  } else {
+    message +=
+      'No capo for this song. ';
+  }
 
-if (capo > 0) { message += ‘Capo is on fret’ + capo + ‘.’; } else {
-message += ‘No capo for this song.’; }
+  if (
+    type === 'tab' ||
+    type === 'mixed'
+  ) {
+    message +=
+      'This song also includes tab and melody sections. ';
+  }
 
-if ( type === ‘tab’ || type === ‘mixed’ ) { message += ‘This song also
-includes tab and melody sections.’; }
+  message +=
+    'You now have this song loaded. Follow your Song Mode initial response rules exactly. ' +
+    'Your spoken introduction must come first, then append the CAPO command as a pipe command ' +
+    'at the very end of your response.';
 
-message += ‘You now have this song loaded. Follow your Song Mode initial
-response rules exactly.’ + ‘Your spoken introduction must come first,
-then append the CAPO command as a pipe command’ + ‘at the very end of
-your response.’;
+  res.json({
+    ready: true,
+    sessionId: id,
+    songTitle,
+    message,
+    mode: 'song',
+    key: key || null,
+    timeSignature:
+      timeSignature || null,
+    suggestedBpm:
+      suggestedBpm || null,
+    strumPattern:
+      patternInfo
+        ? {
+            name:
+              patternInfo.name,
+            arrows:
+              patternInfo.arrows,
+            counts:
+              patternInfo.counts
+          }
+        : null
+  });
+});
 
-res.json({ ready: true, sessionId: id, songTitle, message, mode: ‘song’,
-key: key || null, timeSignature: timeSignature || null, suggestedBpm:
-suggestedBpm || null, strumPattern: patternInfo ? { name:
-patternInfo.name, arrows: patternInfo.arrows, counts: patternInfo.counts
-} : null }); });
+// ─── Song Upload ─────────────────────────────────────────────────────────────
+app.post('/song-upload', (req, res, next) => {
+  if (!multer) {
+    return res.status(500).json({
+      error:
+        'File upload not available'
+    });
+  }
 
-// ─── Song Upload
-─────────────────────────────────────────────────────────────
-app.post(‘/song-upload’, (req, res, next) => { if (!multer) { return
-res.status(500).json({ error: ‘File upload not available’ }); }
-
-upload.single(‘file’)( req, res, err => { if (err) { return res
-.status(400) .json({ error: ‘File upload error’, detail: err.message });
-}
+  upload.single('file')(
+    req,
+    res,
+    err => {
+      if (err) {
+        return res
+          .status(400)
+          .json({
+            error:
+              'File upload error',
+            detail:
+              err.message
+          });
+      }
 
       handleSongUpload(
         req,
         res
       );
     }
+  );
+});
 
-); });
+async function handleSongUpload(req, res) {
+  const sessionId =
+    (req.body &&
+      req.body.session) ||
+    (req.query &&
+      req.query.session);
 
-async function handleSongUpload(req, res) { const sessionId = (req.body
-&& req.body.session) || (req.query && req.query.session);
+  const pastedText =
+    req.body &&
+    req.body.text;
 
-const pastedText = req.body && req.body.text;
+  const file =
+    req.file;
 
-const file = req.file;
+  // IMPORTANT:
+  // songs.html sends the uploaded filename,
+  // without its extension, as the authoritative title.
+  const submittedSongTitle =
+    (
+      (req.body &&
+        req.body.songTitle) ||
+      ''
+    )
+      .trim()
+      .slice(0, 180);
 
-// IMPORTANT: // songs.html sends the uploaded filename, // without its
-extension, as the authoritative title. const submittedSongTitle = (
-(req.body && req.body.songTitle) || ’’ ) .trim() .slice(0, 180);
+  if (!sessionId) {
+    return res
+      .status(400)
+      .json({
+        error:
+          'Missing session ID'
+      });
+  }
 
-if (!sessionId) { return res .status(400) .json({ error: ‘Missing
-session ID’ }); }
+  const id =
+    sessionId.toUpperCase();
 
-const id = sessionId.toUpperCase();
+  const session =
+    sessions[id];
 
-const session = sessions[id];
+  if (!session) {
+    return res
+      .status(404)
+      .json({
+        error:
+          'Session not found or expired',
+        id
+      });
+  }
 
-if (!session) { return res .status(404) .json({ error: ‘Session not
-found or expired’, id }); }
+  if (
+    !file &&
+    !pastedText
+  ) {
+    return res
+      .status(400)
+      .json({
+        error:
+          'No file or text provided'
+      });
+  }
 
-if ( !file && !pastedText ) { return res .status(400) .json({ error: ‘No
-file or text provided’ }); }
+  if (!ANTHROPIC_API_KEY) {
+    return res
+      .status(500)
+      .json({
+        error:
+          'ANTHROPIC_API_KEY not set'
+      });
+  }
 
-if (!ANTHROPIC_API_KEY) { return res .status(500) .json({ error:
-‘ANTHROPIC_API_KEY not set’ }); }
+  session.status =
+    'processing';
 
-session.status = ‘processing’;
+  // The filename title wins before analysis begins.
+  if (submittedSongTitle) {
+    session.songTitle =
+      submittedSongTitle;
+  }
 
-// The filename title wins before analysis begins. if
-(submittedSongTitle) { session.songTitle = submittedSongTitle; }
-
-try { let claudeContent = [];
+  try {
+    let claudeContent = [];
 
     if (file) {
       const mimeType =
@@ -1882,8 +2566,9 @@ try { let claudeContent = [];
       message:
         'Song uploaded successfully. Vizi is ready!'
     });
-
-} catch (err) { session.status = ‘error’;
+  } catch (err) {
+    session.status =
+      'error';
 
     session.error =
       err.message;
@@ -1894,73 +2579,84 @@ try { let claudeContent = [];
       detail:
         err.message
     });
+  }
+}
 
-} }
-
-// ─── Song analysis prompt
-──────────────────────────────────────────────────── function
-buildAnalysisPrompt(songTitle) { return
-Analyze this image of sheet music, a chord chart, or guitar tab. ${songTitle   ?AUTHORITATIVE
-SONG TITLE FROM THE UPLOAD: “${songTitle}”. Copy this EXACTLY into
-songTitle. Do NOT rename, correct, reinterpret, or replace it based on
-the page contents.` : ‘No authoritative title was supplied; infer
-songTitle only if it is clearly visible.’}
+// ─── Song analysis prompt ────────────────────────────────────────────────────
+function buildAnalysisPrompt(songTitle) {
+  return `Analyze this image of sheet music, a chord chart, or guitar tab.
+${songTitle
+  ? `AUTHORITATIVE SONG TITLE FROM THE UPLOAD: "${songTitle}". Copy this EXACTLY into songTitle. Do NOT rename, correct, reinterpret, or replace it based on the page contents.`
+  : 'No authoritative title was supplied; infer songTitle only if it is clearly visible.'}
 
 Return ONLY this JSON structure (no markdown, no explanation):
-{“songTitle”:“song name if visible or
-provided”,“type”:“chords”,“capo”:0,“key”:“G
-major”,“timeSignature”:“4/4”,“strummingPattern”:“Pattern 3 — Common Pop
-Rock”,“suggestedBpm”:90,“chords”:[“G”,“Em”,“C”,“D”],“progression”:“[Verse]
-G Em C D | [Chorus] C G Am F”,“tabTokens”:[],“rawText”:“any text you
-extracted”}
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"any text you extracted"}
 
-RULES: - “type” must be “chords”, “tab”, or “mixed” - “capo” must be a
-number — 0 if no capo - “key” is your best-guess overall key of the song
-(e.g. “G major”, “A minor”), based on the chords and progression -
-“timeSignature” is your best-guess time signature (e.g. “4/4”, “3/4”,
-“6/8”) — default to “4/4” if you cannot determine it -
-“strummingPattern” must be exactly one of these five: “Pattern 1 — All
-Down” “Pattern 2 — Down Up” “Pattern 3 — Common Pop Rock” “Pattern 4 —
-Reggae Skank” “Pattern 5 — Ballad” - “suggestedBpm” is a single number —
-your best estimate of the song’s tempo, typically between 60 and 140 -
-“chords” must use standard chord names - “progression” should preserve
-section labels if visible - “tabTokens” only for tab/mixed. String
-codes: He=high E, B, G, D, A, Le=low E - If you cannot read clearly,
-return type:“chords” with empty chords array`; }
+RULES:
+- "type" must be "chords", "tab", or "mixed"
+- "capo" must be a number — 0 if no capo
+- "key" is your best-guess overall key of the song (e.g. "G major", "A minor"), based on the chords and progression
+- "timeSignature" is your best-guess time signature (e.g. "4/4", "3/4", "6/8") — default to "4/4" if you cannot determine it
+- "strummingPattern" must be exactly one of these five:
+  "Pattern 1 — All Down"
+  "Pattern 2 — Down Up"
+  "Pattern 3 — Common Pop Rock"
+  "Pattern 4 — Reggae Skank"
+  "Pattern 5 — Ballad"
+- "suggestedBpm" is a single number — your best estimate of the song's tempo, typically between 60 and 140
+- "chords" must use standard chord names
+- "progression" should preserve section labels if visible
+- "tabTokens" only for tab/mixed. String codes: He=high E, B, G, D, A, Le=low E
+- If you cannot read clearly, return type:"chords" with empty chords array`;
+}
 
-function buildTextAnalysisPrompt(text, songTitle) { return
-Analyze this guitar chord chart or tab text. ${songTitle   ?AUTHORITATIVE
-SONG TITLE FROM THE UPLOAD: “${songTitle}”. Copy this EXACTLY into
-songTitle. Do NOT rename, correct, reinterpret, or replace it based on
-the page contents.` : ‘No authoritative title was supplied; infer
-songTitle only if it is clearly visible.’}
+function buildTextAnalysisPrompt(text, songTitle) {
+  return `Analyze this guitar chord chart or tab text.
+${songTitle
+  ? `AUTHORITATIVE SONG TITLE FROM THE UPLOAD: "${songTitle}". Copy this EXACTLY into songTitle. Do NOT rename, correct, reinterpret, or replace it based on the page contents.`
+  : 'No authoritative title was supplied; infer songTitle only if it is clearly visible.'}
 
-TEXT: ${text}
+TEXT:
+${text}
 
 Return ONLY this JSON structure (no markdown, no explanation):
-{“songTitle”:“song name if visible or
-provided”,“type”:“chords”,“capo”:0,“key”:“G
-major”,“timeSignature”:“4/4”,“strummingPattern”:“Pattern 3 — Common Pop
-Rock”,“suggestedBpm”:90,“chords”:[“G”,“Em”,“C”,“D”],“progression”:“[Verse]
-G Em C D | [Chorus] C G Am
-F”,“tabTokens”:[],“rawText”:“${text.replace(/”/g, “’”).slice(0, 200)}“}
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"${text.replace(/"/g, "'").slice(0, 200)}"}
 
-RULES: - “type” must be “chords”, “tab”, or “mixed” - “chords” must list
-every unique chord used - “capo” must be a number — 0 if no capo - “key”
-is your best-guess overall key of the song - “timeSignature” is your
-best-guess time signature — default to “4/4” if uncertain -
-“strummingPattern” must be exactly one of the five approved patterns -
-“suggestedBpm” is a single number, normally between 60 and 140 -
-“tabTokens” only for tab sections. String codes: He=high E, B, G, D, A,
-Le=low E`; }
+RULES:
+- "type" must be "chords", "tab", or "mixed"
+- "chords" must list every unique chord used
+- "capo" must be a number — 0 if no capo
+- "key" is your best-guess overall key of the song
+- "timeSignature" is your best-guess time signature — default to "4/4" if uncertain
+- "strummingPattern" must be exactly one of the five approved patterns
+- "suggestedBpm" is a single number, normally between 60 and 140
+- "tabTokens" only for tab sections. String codes: He=high E, B, G, D, A, Le=low E`;
+}
 
-// ─── Claude analysis helper
-────────────────────────────────────────────────── function
-callClaudeAPI(claudeBody) { return new Promise( (resolve, reject) => {
-const options = { hostname: ‘api.anthropic.com’, path: ‘/v1/messages’,
-method: ‘POST’, headers: { ‘Content-Type’: ‘application/json’,
-‘x-api-key’: ANTHROPIC_API_KEY, ‘anthropic-version’: ‘2023-06-01’,
-‘Content-Length’: Buffer.byteLength( claudeBody ) } };
+// ─── Claude analysis helper ──────────────────────────────────────────────────
+function callClaudeAPI(claudeBody) {
+  return new Promise(
+    (resolve, reject) => {
+      const options = {
+        hostname:
+          'api.anthropic.com',
+        path:
+          '/v1/messages',
+        method:
+          'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+          'x-api-key':
+            ANTHROPIC_API_KEY,
+          'anthropic-version':
+            '2023-06-01',
+          'Content-Length':
+            Buffer.byteLength(
+              claudeBody
+            )
+        }
+      };
 
       const apiReq =
         https.request(
@@ -2018,39 +2714,88 @@ method: ‘POST’, headers: { ‘Content-Type’: ‘application/json’,
 
       apiReq.end();
     }
+  );
+}
 
-); }
+function parseClaudeAnalysis(text) {
+  const clean =
+    text
+      .replace(
+        /```json|```/g,
+        ''
+      )
+      .trim();
 
-function parseClaudeAnalysis(text) { const clean = text .replace(
-/json|/g, ’’ ) .trim();
+  try {
+    return JSON.parse(clean);
+  } catch(e) {
+    return {
+      type: 'chords',
+      chords: [],
+      progression: '',
+      tabTokens: [],
+      rawText: text,
+      key: '',
+      timeSignature: '4/4',
+      strummingPattern: '',
+      suggestedBpm: null
+    };
+  }
+}
 
-try { return JSON.parse(clean); } catch(e) { return { type: ‘chords’,
-chords: [], progression: ’‘, tabTokens: [], rawText: text, key:’‘,
-timeSignature: ’4/4’, strummingPattern: ’’, suggestedBpm: null }; } }
+function normalizeBpm(value) {
+  const n =
+    parseInt(value, 10);
 
-function normalizeBpm(value) { const n = parseInt(value, 10);
+  if (
+    Number.isNaN(n)
+  ) {
+    return null;
+  }
 
-if ( Number.isNaN(n) ) { return null; }
+  if (
+    n < 40 ||
+    n > 220
+  ) {
+    return null;
+  }
 
-if ( n < 40 || n > 220 ) { return null; }
+  return n;
+}
 
-return n; }
+// ─── Start ───────────────────────────────────────────────────────────────────
+const PORT =
+  process.env.PORT ||
+  3000;
 
-// ─── Start
-───────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(
+    'Vizi TTS Proxy listening on port ' +
+    PORT
+  );
 
-app.listen(PORT, () => { console.log( ‘Vizi TTS Proxy listening on
-port’ + PORT );
+  console.log(
+    'Voice:',
+    VOICE_NAME
+  );
 
-console.log( ‘Voice:’, VOICE_NAME );
+  console.log(
+    'Claude ready:',
+    !!ANTHROPIC_API_KEY
+  );
 
-console.log( ‘Claude ready:’, !!ANTHROPIC_API_KEY );
+  console.log(
+    'YouTube ready:',
+    !!YOUTUBE_API_KEY
+  );
 
-console.log( ‘YouTube ready:’, !!YOUTUBE_API_KEY );
+  console.log(
+    'Multer ready:',
+    !!multer
+  );
 
-console.log( ‘Multer ready:’, !!multer );
-
-console.log( ‘Song prompt ready:’, !!SONG_PROMPT ); });
-
-[1] 0-9
+  console.log(
+    'Song prompt ready:',
+    !!SONG_PROMPT
+  );
+});
