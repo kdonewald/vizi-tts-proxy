@@ -122,7 +122,6 @@ const VOICE_NAME        = process.env.VOICE_NAME || 'en-US-Neural2-F';
 const LANGUAGE_CODE     = 'en-US';
 
 const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT     || 'You are Vizi, an AI guitar tutor.';
-const REMINDER_PROMPT   = process.env.REMINDER_PROMPT   || '';
 const SONG_PROMPT       = process.env.SONG_PROMPT       || '';
 const STRUMMING_PROMPT  = process.env.STRUMMING_PROMPT  || '';
 const SOLOING_PROMPT    = process.env.SOLOING_PROMPT    || '';
@@ -141,7 +140,6 @@ function buildSystemText(mode) {
   } else if (mode === 'talk' || mode === 'general') {
     systemText =
       SYSTEM_PROMPT +
-      (REMINDER_PROMPT ? '\n\n' + REMINDER_PROMPT : '') +
       (CURRICULUM_PROMPT ? '\n\n' + CURRICULUM_PROMPT : '');
   }
 
@@ -519,6 +517,8 @@ app.get('/health', (req, res) => {
     activeSessions: Object.keys(sessions).length,
     multerReady: !!multer,
     songPromptReady: !!SONG_PROMPT,
+    systemPromptReady: !!SYSTEM_PROMPT,
+    curriculumPromptReady: !!CURRICULUM_PROMPT,
     fretboardQueued: fretboardQueue.length
   });
 });
