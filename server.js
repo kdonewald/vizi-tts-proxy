@@ -511,7 +511,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'Vizi TTS Proxy running',
     voice: VOICE_NAME,
-    model: 'claude-sonnet-5',
+    model: 'claude-haiku-4-5-20251001',
     claudeReady: !!ANTHROPIC_API_KEY,
     youtubeReady: !!YOUTUBE_API_KEY,
     historyLength: conversationHistory.length,
@@ -601,7 +601,7 @@ app.post('/vizi-test', (req, res) => {
 
   const systemText = buildSystemText(mode);
   const claudeBody = JSON.stringify({
-    model: 'claude-sonnet-5',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 1000,
     system: cachedSystem(systemText),
     messages
@@ -1017,7 +1017,7 @@ app.post('/claude-tts', (req, res) => {
   );
 
   const claudeBody = JSON.stringify({
-    model: 'claude-sonnet-5',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 1000,
     system: cachedSystem(systemText),
     messages
@@ -1348,7 +1348,7 @@ app.post('/stt-claude-tts', async (req, res) => {
 
     const claudeBody = JSON.stringify({
       model:
-        'claude-sonnet-5',
+        'claude-haiku-4-5-20251001',
       max_tokens: 1000,
       system: cachedSystem(systemText),
       messages
@@ -1875,7 +1875,7 @@ app.post('/claude', (req, res) => {
   const claudeBody =
     JSON.stringify({
       model:
-        'claude-sonnet-5',
+        'claude-haiku-4-5-20251001',
       max_tokens: 1000,
       system:
         cachedSystem(systemText),
@@ -2477,7 +2477,7 @@ async function handleSongUpload(req, res) {
     const claudeBody =
       JSON.stringify({
         model:
-          'claude-sonnet-5',
+          'claude-haiku-4-5-20251001',
         max_tokens: 1500,
         system:
           `You are a music analysis assistant for the Vizi AI guitar tutor system. ` +
