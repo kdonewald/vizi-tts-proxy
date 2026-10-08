@@ -169,6 +169,22 @@ function logClaudeCache(label, usage) {
   );
 }
 
+// V7.8.3: Clean only student-facing speech; NEVER change ESP32 commands.
+// Remove common Markdown presentation marks before display, history, and TTS.
+function cleanSpokenFormatting(value) {
+  return String(value || '')
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1')
+    .replace(/\*+/g, '')
+    .replace(/(^|\n)\s{0,3}#{1,6}\s+/g, '$1')
+    .replace(/(^|\n)\s*[-•]\s+(?=\S)/g, '$1')
+    .replace(/`+/g, '')
+    .replace(/(?<=\w)_(?=\w)/g, ' ')
+    .replace(/_+/g, '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 // ─── Pipe response parser ────────────────────────────────────────────────────
 function parsePipeResponse(fullText) {
   const raw = String(fullText || '');
@@ -226,7 +242,7 @@ function parsePipeResponse(fullText) {
 }
 
 function normalizedPipeResponse(spoken, commands) {
-  const cleanSpoken = String(spoken || '').replace(/\|/g, ' ').trim();
+  const cleanSpoken = cleanSpokenFormatting(String(spoken || '').replace(/\|/g, ' '));
   const cleanCommands = String(commands || '').replace(/\|/g, ' ').trim();
   return cleanCommands ? `${cleanSpoken} | ${cleanCommands}` : `${cleanSpoken} |`;
 }
@@ -658,7 +674,7 @@ app.post('/vizi-test', (req, res) => {
 
         const parsedPipe = parsePipeResponse(rawFullText);
         const recoveredPipe = recoverMisplacedViziCommand(parsedPipe);
-        const spoken = recoveredPipe.spoken;
+        const spoken = cleanSpokenFormatting(recoveredPipe.spoken);
         const rawCommands = recoveredPipe.commands;
         const validation = validateViziCommands(rawCommands, {
           mode,
@@ -795,7 +811,7 @@ function speakableChords(text) {
 
 // ─── Google TTS helper ───────────────────────────────────────────────────────
 function synthesize(text, res) {
-  text = speakableChords(text);
+  text = speakableChords(cleanSpokenFormatting(text));
 
   console.log('Synthesizing:', text.slice(0, 80));
 
@@ -886,7 +902,7 @@ function synthesize(text, res) {
 
 // ─── Promise TTS helper ──────────────────────────────────────────────────────
 function synthesizeToBuffer(text) {
-  text = speakableChords(text);
+  text = speakableChords(cleanSpokenFormatting(text));
 
   return new Promise((resolve, reject) => {
     if (!GOOGLE_API_KEY) {
@@ -1092,7 +1108,7 @@ app.post('/claude-tts', (req, res) => {
 
           const parsedPipe = parsePipeResponse(rawFullText);
           const recoveredPipe = recoverMisplacedViziCommand(parsedPipe);
-          const spoken = recoveredPipe.spoken;
+          const spoken = cleanSpokenFormatting(recoveredPipe.spoken);
           const rawCommands = recoveredPipe.commands;
 
           const validation = validateViziCommands(rawCommands, {
@@ -1487,7 +1503,7 @@ app.post('/stt-claude-tts', async (req, res) => {
   // ── Step 3: TTS ──
   const parsedPipe = parsePipeResponse(fullText);
   const recoveredPipe = recoverMisplacedViziCommand(parsedPipe);
-  const spoken = recoveredPipe.spoken;
+  const spoken = cleanSpokenFormatting(recoveredPipe.spoken);
   const rawCommands = recoveredPipe.commands;
 
   const validation = validateViziCommands(rawCommands, {
