@@ -601,7 +601,7 @@ app.post('/vizi-test', (req, res) => {
 
   const systemText = buildSystemText(mode);
   const claudeBody = JSON.stringify({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-haiku-5-5',
     max_tokens: 1000,
     system: cachedSystem(systemText),
     messages
