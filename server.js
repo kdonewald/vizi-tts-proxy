@@ -634,7 +634,27 @@ app.post('/vizi-test', (req, res) => {
         }
 
         logClaudeCache('vizi-test', parsed.usage);
-        const rawFullText = parsed.content && parsed.content[0] && parsed.content[0].text || '';
+        const contentBlocks = Array.isArray(parsed.content) ? parsed.content : [];
+        const textBlocks = contentBlocks.filter(
+          block => block && block.type === 'text' && typeof block.text === 'string'
+        );
+        const rawFullText = textBlocks.map(block => block.text).join('');
+
+        if (!rawFullText.trim()) {
+          history.pop();
+          const contentTypes = contentBlocks.map(block => block && block.type || 'unknown');
+          console.error('[vizi-test] Claude response contained no text block', {
+            model: parsed.model || 'unknown',
+            stop_reason: parsed.stop_reason || 'unknown',
+            contentTypes
+          });
+          return res.status(502).json({
+            error: 'Claude response contained no text block',
+            model: parsed.model || null,
+            stop_reason: parsed.stop_reason || null,
+            contentTypes
+          });
+        }
 
         const parsedPipe = parsePipeResponse(rawFullText);
         const recoveredPipe = recoverMisplacedViziCommand(parsedPipe);
