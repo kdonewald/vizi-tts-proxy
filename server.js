@@ -148,6 +148,51 @@ function buildSystemText(mode) {
   return systemText;
 }
 
+// V7.8.4: Question-specific guitar facts are attached only to the current request.
+// This does not change the selected teaching mode, curriculum, progress, or history.
+const CAGED_ROOT_REFERENCE = Object.freeze({
+  E: { string: 'Low E', offset: 0 },
+  A: { string: 'A', offset: 0 },
+  C: { string: 'A', offset: 3 },
+  G: { string: 'Low E', offset: 3 },
+  D: { string: 'D', offset: 0 }
+});
+
+function addQuestionSpecificGuitarFacts(systemText, userMessage) {
+  const text = String(userMessage || '');
+  const asksAboutRoot = /\b(root|route|tonic)\b/i.test(text) ||
+    /\bwhich\s+finger\b.*\b(chord|shape)\b/i.test(text);
+  if (!asksAboutRoot) return systemText;
+
+  const shapeMatch = text.match(/\b([EACGD])(?:[\s-]*shape(?:d)?)\b/i);
+  if (!shapeMatch) return systemText;
+
+  const shape = shapeMatch[1].toUpperCase();
+  const fact = CAGED_ROOT_REFERENCE[shape];
+  if (!fact) return systemText;
+
+  const relation = fact.offset === 0
+    ? `The chord root is on the ${fact.string} string at the same fret as the ${shape}-shape position.`
+    : `The chord root is on the ${fact.string} string three frets ABOVE the ${shape}-shape position. Root fret = shape-position fret + 3.`;
+
+  const examples = shape === 'C'
+    ? 'Examples: C-shape F has shape position 5 and root F at A-string fret 8; C-shape C is open/position 0 and its root C is at A-string fret 3.'
+    : shape === 'G'
+      ? 'Examples: G-shape C has shape position 5 and root C at Low-E fret 8; G-shape G is open/position 0 and its root G is at Low-E fret 3.'
+      : '';
+
+  return systemText + '\n\n' +
+    'QUESTION-SPECIFIC VERIFIED GUITAR FACTS — USE FOR THIS QUESTION\n' +
+    `The student explicitly asked about the root in the ${shape}-shape form. ` +
+    `${relation} ` +
+    (examples ? `${examples} ` : '') +
+    'The CAGED table number is the shape/command position; it is not automatically the root fret. ' +
+    'This verified fact overrides any earlier instruction that would prevent answering this explicitly asked root-location question. ' +
+    'Do not claim the bar finger itself is the root. A root is a note/location, not a finger. ' +
+    'Do not guess a finger assignment; use the active diagram for exact fingering. ' +
+    'Use this only to answer the current question. Preserve the current teaching mode, CURRENT STEPS, progress, and lesson flow; do not restart, advance, or switch stages.';
+}
+
 function cachedSystem(systemText) {
   return [
     {
@@ -615,7 +660,8 @@ app.post('/vizi-test', (req, res) => {
     req.body && req.body.steps
   );
 
-  const systemText = buildSystemText(mode);
+  const systemText = addQuestionSpecificGuitarFacts(buildSystemText(mode), message);
+  const referenceContextApplied = systemText.includes('QUESTION-SPECIFIC VERIFIED GUITAR FACTS');
   const claudeBody = JSON.stringify({
     model: 'claude-haiku-5-5',
     max_tokens: 1000,
@@ -707,6 +753,7 @@ app.post('/vizi-test', (req, res) => {
           rawPipeCount: parsedPipe.rawPipeCount,
           commandRecovered: recoveredPipe.commandRecovered,
           responseNormalized: fullText !== rawFullText.trim(),
+          referenceContextApplied,
           historyLength: history.length
         });
       } catch (err) {
@@ -1039,7 +1086,7 @@ app.post('/claude-tts', (req, res) => {
     .replace(/[\r\n]+/g, ' ')
     .trim();
 
-  const systemText = buildSystemText(mode);
+  const systemText = addQuestionSpecificGuitarFacts(buildSystemText(mode), message);
 
   getHistory();
   addToHistory('user', message);
@@ -1363,7 +1410,10 @@ app.post('/stt-claude-tts', async (req, res) => {
 
   try {
     const systemText =
-      buildSystemText(mode);
+      addQuestionSpecificGuitarFacts(
+        buildSystemText(mode),
+        transcript.trim()
+      );
 
     getHistory();
 
@@ -1889,7 +1939,10 @@ app.post('/claude', (req, res) => {
     .trim();
 
   const systemText =
-    buildSystemText(mode);
+    addQuestionSpecificGuitarFacts(
+      buildSystemText(mode),
+      message
+    );
 
   getHistory();
 
