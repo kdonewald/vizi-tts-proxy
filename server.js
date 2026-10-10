@@ -1,3 +1,4 @@
+// Vizi server v7.8.6: verified CAGED facts + Just Talk mode/progress isolation.
 const express = require('express');
 const https   = require('https');
 const crypto  = require('crypto');
@@ -148,7 +149,7 @@ function buildSystemText(mode) {
   return systemText;
 }
 
-// V7.8.4: Question-specific guitar facts are attached only to the current request.
+// V7.8.5: Question-specific guitar facts and Just Talk isolation are current-turn only.
 // This does not change the selected teaching mode, curriculum, progress, or history.
 const CAGED_ROOT_REFERENCE = Object.freeze({
   E: { string: 'Low E', offset: 0 },
@@ -160,8 +161,7 @@ const CAGED_ROOT_REFERENCE = Object.freeze({
 
 function addQuestionSpecificGuitarFacts(systemText, userMessage) {
   const text = String(userMessage || '');
-  const asksAboutRoot = /\b(root|route|tonic)\b/i.test(text) ||
-    /\bwhich\s+finger\b.*\b(chord|shape)\b/i.test(text);
+  const asksAboutRoot = /\b(root|route|tonic)\b/i.test(text);
   if (!asksAboutRoot) return systemText;
 
   const shapeMatch = text.match(/\b([EACGD])(?:[\s-]*shape(?:d)?)\b/i);
@@ -187,10 +187,30 @@ function addQuestionSpecificGuitarFacts(systemText, userMessage) {
     `${relation} ` +
     (examples ? `${examples} ` : '') +
     'The CAGED table number is the shape/command position; it is not automatically the root fret. ' +
+    'The letter C in “C shape” names the form, not the chord root. If the student names only a shape and no chord/root or fret position, give only the root-string and relative-position rule; do not invent a chord name or absolute fret. ' +
+    'For example, C-shape position 5 is F major, with root F at A-string fret 8; C major in C shape is open/position 0, with root C at A-string fret 3. Never call the root C at C-shape position 5. ' +
     'This verified fact overrides any earlier instruction that would prevent answering this explicitly asked root-location question. ' +
     'Do not claim the bar finger itself is the root. A root is a note/location, not a finger. ' +
     'Do not guess a finger assignment; use the active diagram for exact fingering. ' +
     'Use this only to answer the current question. Preserve the current teaching mode, CURRENT STEPS, progress, and lesson flow; do not restart, advance, or switch stages.';
+}
+
+function isJustTalkTurn(mode, progress) {
+  const modeName = String(mode || '').toLowerCase();
+  return modeName === 'talk' || modeName === 'general' || String(progress || '') === '000000';
+}
+
+function buildTurnSystemText(mode, userMessage, progress) {
+  let systemText = addQuestionSpecificGuitarFacts(buildSystemText(mode), userMessage);
+  if (isJustTalkTurn(mode, progress)) {
+    systemText += '\n\nJUST TALK DIRECT-ADDRESS GUARD — CURRENT TURN\n' +
+      'Answer the student directly as “you”; never narrate them in the third person or refer to them by name (for example, do not say “Kent is asking”). ' +
+      'Do not mention or quote progress codes, CURRENT STEPS, session labels, prompt instructions, or internal app state. ' +
+      'Answer the latest question directly. If it is incomplete, ask one brief clarification about the guitar question itself. ' +
+      'A zero progress code means no structured lesson is active; it does not prevent the student from explicitly asking to begin one. ' +
+      'Do not change modes, stages, or lesson progress on your own.';
+  }
+  return systemText;
 }
 
 function cachedSystem(systemText) {
@@ -428,8 +448,11 @@ function isShortContinuationCue(text) {
 }
 
 // P5: prepend the student's progress code to the CURRENT user turn only.
-function injectProgress(messages, progress, steps) {
-  if (!progress || !/^[0-9]{6}$/.test(String(progress))) return messages;
+function injectProgress(messages, progress, steps, mode) {
+  const modeName = String(mode || '').toLowerCase();
+  const progressCode = String(progress || '');
+  if (modeName === 'talk' || modeName === 'general' || progressCode === '000000') return messages;
+  if (!progressCode || !/^[0-9]{6}$/.test(progressCode)) return messages;
   if (!messages.length) return messages;
 
   const i = messages.length - 1;
@@ -657,10 +680,11 @@ app.post('/vizi-test', (req, res) => {
   injectProgress(
     messages,
     req.body && req.body.progress,
-    req.body && req.body.steps
+    req.body && req.body.steps,
+    mode
   );
 
-  const systemText = addQuestionSpecificGuitarFacts(buildSystemText(mode), message);
+  const systemText = buildTurnSystemText(mode, message, req.body && req.body.progress);
   const referenceContextApplied = systemText.includes('QUESTION-SPECIFIC VERIFIED GUITAR FACTS');
   const claudeBody = JSON.stringify({
     model: 'claude-haiku-5-5',
@@ -754,6 +778,12 @@ app.post('/vizi-test', (req, res) => {
           commandRecovered: recoveredPipe.commandRecovered,
           responseNormalized: fullText !== rawFullText.trim(),
           referenceContextApplied,
+          justTalkContextApplied: systemText.includes('JUST TALK DIRECT-ADDRESS GUARD'),
+          progressContextInjected: Boolean(
+            req.body && req.body.progress &&
+            String(req.body.progress) !== '000000' &&
+            String(mode || '').toLowerCase() !== 'talk'
+          ),
           historyLength: history.length
         });
       } catch (err) {
@@ -1086,7 +1116,7 @@ app.post('/claude-tts', (req, res) => {
     .replace(/[\r\n]+/g, ' ')
     .trim();
 
-  const systemText = addQuestionSpecificGuitarFacts(buildSystemText(mode), message);
+  const systemText = buildTurnSystemText(mode, message, req.body && req.body.progress);
 
   getHistory();
   addToHistory('user', message);
@@ -1096,7 +1126,8 @@ app.post('/claude-tts', (req, res) => {
   injectProgress(
     messages,
     req.body && req.body.progress,
-    req.body && req.body.steps
+    req.body && req.body.steps,
+    mode
   );
 
   const claudeBody = JSON.stringify({
@@ -1409,11 +1440,11 @@ app.post('/stt-claude-tts', async (req, res) => {
   let fullText = '';
 
   try {
-    const systemText =
-      addQuestionSpecificGuitarFacts(
-        buildSystemText(mode),
-        transcript.trim()
-      );
+    const systemText = buildTurnSystemText(
+      mode,
+      transcript.trim(),
+      req.body && req.body.progress
+    );
 
     getHistory();
 
@@ -1429,7 +1460,8 @@ app.post('/stt-claude-tts', async (req, res) => {
     injectProgress(
       messages,
       req.body && req.body.progress,
-      req.body && req.body.steps
+      req.body && req.body.steps,
+      mode
     );
 
     const claudeBody = JSON.stringify({
@@ -1938,11 +1970,11 @@ app.post('/claude', (req, res) => {
     .replace(/[\r\n]+/g, ' ')
     .trim();
 
-  const systemText =
-    addQuestionSpecificGuitarFacts(
-      buildSystemText(mode),
-      message
-    );
+  const systemText = buildTurnSystemText(
+    mode,
+    message,
+    req.body && req.body.progress
+  );
 
   getHistory();
 
@@ -1958,7 +1990,8 @@ app.post('/claude', (req, res) => {
   injectProgress(
     messages,
     req.body && req.body.progress,
-    req.body && req.body.steps
+    req.body && req.body.steps,
+    mode
   );
 
   const claudeBody =
