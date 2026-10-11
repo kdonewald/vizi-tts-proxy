@@ -1,4 +1,4 @@
-// Vizi server v7.8.6: verified CAGED facts + Just Talk mode/progress isolation.
+// Vizi server v7.8.7: verified CAGED facts + Just Talk isolation + follow-up detection.
 const express = require('express');
 const https   = require('https');
 const crypto  = require('crypto');
@@ -161,7 +161,9 @@ const CAGED_ROOT_REFERENCE = Object.freeze({
 
 function addQuestionSpecificGuitarFacts(systemText, userMessage) {
   const text = String(userMessage || '');
-  const asksAboutRoot = /\b(root|route|tonic)\b/i.test(text);
+  const asksAboutRoot =
+    /\b(root|route|tonic)\b/i.test(text) ||
+    /\b(?:same|that)\s+(?:exact\s+)?question\b/i.test(text);
   if (!asksAboutRoot) return systemText;
 
   const shapeMatch = text.match(/\b([EACGD])(?:[\s-]*shape(?:d)?)\b/i);
@@ -178,7 +180,7 @@ function addQuestionSpecificGuitarFacts(systemText, userMessage) {
   const examples = shape === 'C'
     ? 'Examples: C-shape F has shape position 5 and root F at A-string fret 8; C-shape C is open/position 0 and its root C is at A-string fret 3.'
     : shape === 'G'
-      ? 'Examples: G-shape C has shape position 5 and root C at Low-E fret 8; G-shape G is open/position 0 and its root G is at Low-E fret 3.'
+      ? 'Examples: G-shape C has shape position 5 and root C at Low-E fret 8; G-shape G is open/position 0 and its root G is at Low-E fret 3. Never say G-shape C at position 5 has its root at Low-E fret 6.'
       : '';
 
   return systemText + '\n\n' +
