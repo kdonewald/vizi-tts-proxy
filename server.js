@@ -197,14 +197,31 @@ function addQuestionSpecificGuitarFacts(systemText, userMessage) {
     'Use this only to answer the current question. Preserve the current teaching mode, CURRENT STEPS, progress, and lesson flow; do not restart, advance, or switch stages.';
 }
 
-function isJustTalkTurn(mode, progress) {
+function hasActiveStructuredProgress(progress) {
+  const code = String(progress || '');
+  return /^[0-9]{6}$/.test(code) && code !== '000000';
+}
+
+function isReturningStudentSessionStart(message) {
+  return /\[SESSION START\s*[—-]\s*RETURNING STUDENT\]/i.test(String(message || ''));
+}
+
+function isStructuredReturningSessionStart(message, progress) {
+  return isReturningStudentSessionStart(message) && hasActiveStructuredProgress(progress);
+}
+
+function isJustTalkTurn(mode, progress, userMessage) {
+  // Ready-to-play sends the returning-student opener through mode="talk".
+  // A nonzero progress snapshot makes that one turn structured guidance.
+  if (isStructuredReturningSessionStart(userMessage, progress)) return false;
+
   const modeName = String(mode || '').toLowerCase();
   return modeName === 'talk' || modeName === 'general' || String(progress || '') === '000000';
 }
 
 function buildTurnSystemText(mode, userMessage, progress) {
   let systemText = addQuestionSpecificGuitarFacts(buildSystemText(mode), userMessage);
-  if (isJustTalkTurn(mode, progress)) {
+  if (isJustTalkTurn(mode, progress, userMessage)) {
     systemText += '\n\nJUST TALK DIRECT-ADDRESS GUARD — CURRENT TURN\n' +
       'Answer the student directly as “you”; never narrate them in the third person or refer to them by name (for example, do not say “Kent is asking”). ' +
       'Do not mention or quote progress codes, CURRENT STEPS, session labels, prompt instructions, or internal app state. ' +
@@ -453,7 +470,6 @@ function isShortContinuationCue(text) {
 function injectProgress(messages, progress, steps, mode) {
   const modeName = String(mode || '').toLowerCase();
   const progressCode = String(progress || '');
-  if (modeName === 'talk' || modeName === 'general' || progressCode === '000000') return messages;
   if (!progressCode || !/^[0-9]{6}$/.test(progressCode)) return messages;
   if (!messages.length) return messages;
 
@@ -461,6 +477,11 @@ function injectProgress(messages, progress, steps, mode) {
   if (typeof messages[i].content !== 'string') return messages;
 
   const originalUserText = messages[i].content;
+  const structuredSessionStart = isStructuredReturningSessionStart(originalUserText, progressCode);
+  if (((modeName === 'talk' || modeName === 'general') && !structuredSessionStart) || progressCode === '000000') {
+    return messages;
+  }
+
   const continuation = isShortContinuationCue(originalUserText);
 
   let header = `PROGRESS: ${progress}.`;
