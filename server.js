@@ -1,4 +1,4 @@
-// Vizi server v7.8.7: verified CAGED facts + Just Talk isolation + follow-up detection.
+// Vizi server v7.8.8: verified CAGED facts + Just Talk isolation + follow-up detection + grouped SF whitelist + 900-char display text.
 const express = require('express');
 const https   = require('https');
 const crypto  = require('crypto');
@@ -1256,7 +1256,7 @@ app.post('/claude-tts', (req, res) => {
                 audioBuffer.length,
               'X-Vizi-Text':
                 encodeURIComponent(
-                  spoken.substring(0, 500)
+                  spoken.substring(0, 900)
                 ),
               'X-Vizi-Commands':
                 encodeURIComponent(
@@ -1678,7 +1678,7 @@ app.post('/stt-claude-tts', async (req, res) => {
         ),
       'X-Vizi-Text':
         encodeURIComponent(
-          spoken.substring(0, 500)
+          spoken.substring(0, 900)
         ),
       'X-Vizi-Commands':
         encodeURIComponent(
