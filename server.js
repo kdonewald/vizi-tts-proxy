@@ -70,6 +70,7 @@ function createSession(songTitle = '') {
     type: null,
     chords: [],
     progression: '',
+    progressions: [],
     tabTokens: [],
     rawText: '',
     capo: 0,
@@ -2255,6 +2256,163 @@ const STRUM_PATTERNS = {
   }
 };
 
+// ─── Song assignment: chord simplification + practice progressions ───────────
+// Built in code so the spoken lesson, the Chords-stage screen, and the chord
+// counts always agree. Rules mirror the Song prompt's CHORD SIMPLIFICATION.
+const SLASH_CHORDS_OK = ['Am/F#','Am7/G','C/B','C/G','D/A','D/F#','Em/B','Em/G','F/A','G/B','G/F#'];
+const FLAT_TO_SHARP = { Db:'C#', Eb:'D#', Gb:'F#', Ab:'G#', Bb:'A#' };
+const NATURAL_ROOTS = ['C','D','E','F','G','A','B'];
+const QUAL_SUFFIX = { '':'', m:'m', '7':'7', m7:'m7', maj7:'maj7', '6':'6', m6:'m6' };
+
+function normNoteName(n) {
+  const t = String(n).charAt(0).toUpperCase() + String(n).slice(1);
+  return FLAT_TO_SHARP[t] || t;
+}
+
+// Returns { name, changed, literal } or null when the token is not a chord.
+function parseSongChord(token) {
+  const literal = String(token || '').replace(/\([^)]*\)/g, '').replace(/[,;:.]+$/, '').trim();
+  const m = literal.match(/^([A-G](?:#|b)?)([^\/]*)(?:\/([A-G](?:#|b)?))?$/);
+  if (!m) return null;
+  const root = normNoteName(m[1]);
+  const q = m[2];
+  const natural = NATURAL_ROOTS.indexOf(root) >= 0;
+  let qual = null;
+  let changed = false;
+
+  if (/^(maj|Maj|M|Δ)/.test(q)) {
+    const rest = q.replace(/^(maj|Maj|M|Δ)/, '');
+    if (rest === '') qual = '';
+    else if (/^7$/.test(rest)) qual = 'maj7';
+    else if (/^(9|11|13)$/.test(rest)) { qual = 'maj7'; changed = true; }
+    else if (/^(add|sus|6|2|4)/.test(rest)) { qual = ''; changed = true; }
+  } else if (/^(m|min|-)/.test(q)) {
+    const rest = q.replace(/^(min|m|-)/, '');
+    if (rest === '') qual = 'm';
+    else if (rest === '7') qual = 'm7';
+    else if (/^(7|9|11|13)/.test(rest)) { qual = 'm7'; changed = true; }
+    else if (rest === '6') { qual = natural ? 'm6' : 'm'; changed = !natural; }
+    else if (/^(add|sus|2|4|b5|5|6)/.test(rest)) { qual = 'm'; changed = true; }
+  } else {
+    if (q === '') qual = '';
+    else if (q === '7') qual = '7';
+    else if (/^7sus/.test(q)) { qual = '7'; changed = true; }
+    else if (/^7/.test(q)) { qual = '7'; changed = true; }
+    else if (/^(9|11|13)$/.test(q)) { qual = '7'; changed = true; }
+    else if (q === '6') { qual = natural ? '6' : ''; changed = !natural; }
+    else if (/^(add|sus|2|4|5|6\/9|69)/.test(q)) { qual = ''; changed = true; }
+    else if (/^(dim|o|°|ø)/.test(q)) { qual = 'm'; changed = true; }
+    else if (/^(aug|\+)/.test(q)) { qual = ''; changed = true; }
+  }
+  if (qual === null) return null;
+
+  let name = root + QUAL_SUFFIX[qual];
+  if (m[3]) {
+    const cand = name + '/' + normNoteName(m[3]);
+    if (SLASH_CHORDS_OK.indexOf(cand) >= 0) name = cand;
+    else if (normNoteName(m[3]) !== root) changed = true;
+  }
+  return { name, changed, literal };
+}
+
+function speakSongChord(name) {
+  const m = String(name).match(/^([A-G])(#?)(maj7|m7|m6|m|7|6)?(?:\/([A-G])(#?))?$/);
+  if (!m) return String(name);
+  const words = { m: ' minor', '7': ' seven', m7: ' minor seven', maj7: ' major seven', '6': ' six', m6: ' minor six' };
+  let out = m[1] + (m[2] ? ' sharp' : '') + (words[m[3] || ''] || '');
+  if (m[4]) out += ' over ' + m[4] + (m[5] ? ' sharp' : '');
+  return out;
+}
+
+function chordsFromProgressionText(text) {
+  const out = [];
+  String(text || '').replace(/\[[^\]]*\]/g, ' ').split(/[\s|]+/).forEach(tok => {
+    const p = parseSongChord(tok);
+    if (p) out.push(p);
+  });
+  return out;
+}
+
+function collapseRuns(arr) {
+  const out = [];
+  arr.forEach(x => { if (out[out.length - 1] !== x) out.push(x); });
+  return out;
+}
+
+function fallbackProgressions(seq) {
+  const c = collapseRuns(seq);
+  const out = [];
+  const covered = new Set();
+  let i = 0;
+  while (out.length < 3 && i < c.length) {
+    const win = c.slice(i, i + 4);
+    if (win.length >= 2) out.push(win);
+    win.forEach(x => covered.add(x));
+    const j = c.findIndex((x, idx) => idx > i && !covered.has(x));
+    if (j < 0) break;
+    i = Math.max(j - 1, i + 1);
+  }
+  return out;
+}
+
+function buildAssignment(session) {
+  let parsedSeq = chordsFromProgressionText(session.progression);
+  if (parsedSeq.length < 2) {
+    parsedSeq = [];
+    (session.chords || []).forEach(c => { const p = parseSongChord(c); if (p) parsedSeq.push(p); });
+  }
+  const seq = parsedSeq.map(p => p.name);
+  const unique = [];
+  seq.forEach(n => { if (unique.indexOf(n) < 0) unique.push(n); });
+
+  const simplified = [];
+  parsedSeq.forEach(p => {
+    if (p.changed && !simplified.some(x => x.from === p.literal)) simplified.push({ from: p.literal, to: p.name });
+  });
+
+  const seen = new Set();
+  let progressions = [];
+  (Array.isArray(session.progressions) ? session.progressions : []).forEach(raw => {
+    const toks = Array.isArray(raw) ? raw : String(raw || '').split(/[\s,→>-]+/);
+    const names = collapseRuns(toks.map(t => parseSongChord(t)).filter(Boolean).map(p => p.name))
+      .filter(n => unique.indexOf(n) >= 0);
+    const key = names.join('>');
+    if (names.length >= 2 && !seen.has(key)) { seen.add(key); progressions.push(names.slice(0, 4)); }
+  });
+  progressions = progressions.slice(0, 3);
+  if (!progressions.length) progressions = fallbackProgressions(seq);
+
+  const pat = STRUM_PATTERNS[session.strummingPattern] || null;
+  const target = session.suggestedBpm || null;
+  let practice = target ? Math.max(50, Math.round((target * 0.75) / 5) * 5) : null;
+  if (practice !== null && practice >= target) practice = null;
+
+  return {
+    title: session.songTitle || '',
+    capo: session.capo || 0,
+    key: session.key || '',
+    chords: unique.map(name => ({ name, speak: speakSongChord(name) })),
+    simplified: simplified.slice(0, 3),
+    progressions,
+    strum: pat ? { name: pat.name, arrows: pat.arrows, counts: pat.counts, spoken: pat.spoken } : null,
+    bpm: target ? { target, practice } : null
+  };
+}
+
+function assignmentMessageText(a) {
+  const ord = ['first', 'second', 'third'];
+  let t = 'ASSIGNMENT FROM THE APP (final, already simplified — speak exactly these chord names and never re-derive them; do not say the word assignment): ' +
+    'Chords to practice (' + a.chords.length + '): ' + a.chords.map(c => c.speak).join(', ') + '. ';
+  if (a.simplified.length) {
+    t += 'Simplified from the sheet: ' + a.simplified.map(x => x.from + ' became ' + x.to).join('; ') + '. ';
+  }
+  if (a.progressions.length) {
+    t += 'Progressions (the student also sees these on the Chords stage screen): ' +
+      a.progressions.map((p, i) => ord[i] + ' progression: ' + p.map(speakSongChord).join(', ')).join('. ') + '. ';
+  }
+  return t;
+}
+
 // ─── Song prompt endpoint ────────────────────────────────────────────────────
 app.get('/session-prompt/:id', (req, res) => {
   const id =
@@ -2338,17 +2496,16 @@ app.get('/session-prompt/:id', (req, res) => {
     songTitle +
     '. ';
 
+  const assignment = buildAssignment(session);
+
   if (progression) {
     message +=
-      'Full progression data: ' +
+      'Sheet progression (reference only — when you speak chord names, use the ASSIGNMENT names below): ' +
       progression +
       '. ';
   }
 
-  message +=
-    'Unique chords in this song: ' +
-    chordList +
-    '. ';
+  message += assignmentMessageText(assignment);
 
   if (key) {
     message +=
@@ -2411,6 +2568,7 @@ app.get('/session-prompt/:id', (req, res) => {
     sessionId: id,
     songTitle,
     message,
+    assignment,
     mode: 'song',
     key: key || null,
     timeSignature:
@@ -2660,6 +2818,11 @@ async function handleSongUpload(req, res) {
       parsed.progression ||
       '';
 
+    session.progressions =
+      Array.isArray(parsed.progressions)
+        ? parsed.progressions
+        : [];
+
     session.tabTokens =
       parsed.tabTokens ||
       [];
@@ -2737,10 +2900,11 @@ ${songTitle
   : 'No authoritative title was supplied; infer songTitle only if it is clearly visible.'}
 
 Return ONLY this JSON structure (no markdown, no explanation):
-{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"any text you extracted"}
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","progressions":[["G","Em","C","D"],["C","G","Am","F"]],"tabTokens":[],"rawText":"any text you extracted"}
 
 RULES:
 - "type" must be "chords", "tab", or "mixed"
+- "progressions" is up to 3 practice progressions for a beginner, each 2-4 chords in the real song order, using only chords that appear in the progression (e.g. a recurring loop or the main section phrases). No two progressions may be identical.
 - "capo" must be a number — 0 if no capo
 - "key" is your best-guess overall key of the song (e.g. "G major", "A minor"), based on the chords and progression
 - "timeSignature" is your best-guess time signature (e.g. "4/4", "3/4", "6/8") — default to "4/4" if you cannot determine it
@@ -2767,10 +2931,11 @@ TEXT:
 ${text}
 
 Return ONLY this JSON structure (no markdown, no explanation):
-{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","tabTokens":[],"rawText":"${text.replace(/"/g, "'").slice(0, 200)}"}
+{"songTitle":"song name if visible or provided","type":"chords","capo":0,"key":"G major","timeSignature":"4/4","strummingPattern":"Pattern 3 — Common Pop Rock","suggestedBpm":90,"chords":["G","Em","C","D"],"progression":"[Verse] G Em C D | [Chorus] C G Am F","progressions":[["G","Em","C","D"],["C","G","Am","F"]],"tabTokens":[],"rawText":"${text.replace(/"/g, "'").slice(0, 200)}"}
 
 RULES:
 - "type" must be "chords", "tab", or "mixed"
+- "progressions" is up to 3 practice progressions for a beginner, each 2-4 chords in the real song order, using only chords that appear in the progression (e.g. a recurring loop or the main section phrases). No two progressions may be identical.
 - "chords" must list every unique chord used
 - "capo" must be a number — 0 if no capo
 - "key" is your best-guess overall key of the song
@@ -2880,6 +3045,7 @@ function parseClaudeAnalysis(text) {
       type: 'chords',
       chords: [],
       progression: '',
+      progressions: [],
       tabTokens: [],
       rawText: text,
       key: '',
