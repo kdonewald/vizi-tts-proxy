@@ -2407,8 +2407,8 @@ function assignmentMessageText(a) {
     t += 'Simplified from the sheet: ' + a.simplified.map(x => x.from + ' became ' + x.to).join('; ') + '. ';
   }
   if (a.progressions.length) {
-    t += 'Progressions (the student also sees these on the Chords stage screen): ' +
-      a.progressions.map((p, i) => ord[i] + ' progression: ' + p.map(speakSongChord).join(', ')).join('. ') + '. ';
+    t += 'The Chords stage screen lists ' + a.progressions.length + ' practice progression(s) for the student; DO NOT speak them unless the student asks (reference: ' +
+      a.progressions.map((p, i) => ord[i] + ': ' + p.map(speakSongChord).join(', ')).join('. ') + '). ';
   }
   return t;
 }
