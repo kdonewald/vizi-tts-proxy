@@ -407,6 +407,8 @@ function isAllowedViziCommand(command) {
   if (/^NOTES\s+[\[(].+[\])]$/i.test(c)) return true;
   if (/^SCALE\s+[A-G](?:#|b)?\s+(?:major|minor|pent|pentatonic)\s+(?:ALL|SHAPE\s+[1-5])$/i.test(c)) return true;
   if (/^S(?:He|B|G|D|A|Le)(?:[0-9]|1[0-3])$/i.test(c)) return true;
+  // V7.8.8: grouped (simultaneous) or sequenced SF tokens, e.g. (SA3,SD2,SG0,SB3,SHe0) or [SG5,SG7,SG9].
+  if (/^[\[(]\s*S(?:He|B|G|D|A|Le)(?:[0-9]|1[0-3])(?:\s*,\s*S(?:He|B|G|D|A|Le)(?:[0-9]|1[0-3]))*\s*[\])]$/i.test(c)) return true;
 
   // Triads and CAGED/bar shapes.
   if (/^TRIAD\s+(?:HE|B|G|D|A|LE)\s+[A-G](?:#|b)?m?$/i.test(c)) return true;
