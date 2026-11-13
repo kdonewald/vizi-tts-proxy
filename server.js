@@ -1,4 +1,4 @@
-// Vizi server v7.8.8: verified CAGED facts + Just Talk isolation + follow-up detection + grouped SF whitelist + 900-char display text.
+// Vizi server v7.8.9: verified CAGED facts + Just Talk isolation + follow-up detection + grouped SF whitelist + 900-char display text.
 const express = require('express');
 const https   = require('https');
 const crypto  = require('crypto');
@@ -122,6 +122,16 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const YOUTUBE_API_KEY   = process.env.YOUTUBE_API_KEY;
 const VOICE_NAME        = process.env.VOICE_NAME || 'en-US-Neural2-F';
 const LANGUAGE_CODE     = 'en-US';
+const CLAUDE_MODEL      = process.env.CLAUDE_MODEL || 'claude-haiku-5-5';
+
+// Join all text blocks; tolerates non-text blocks (e.g. thinking) appearing first.
+function extractClaudeText(parsed) {
+  const blocks = parsed && Array.isArray(parsed.content) ? parsed.content : [];
+  return blocks
+    .filter(b => b && b.type === 'text' && typeof b.text === 'string')
+    .map(b => b.text)
+    .join('');
+}
 
 const SYSTEM_PROMPT     = process.env.SYSTEM_PROMPT     || 'You are Vizi, an AI guitar tutor.';
 const REMINDER_PROMPT   = process.env.REMINDER_PROMPT   || '';
@@ -621,7 +631,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'Vizi TTS Proxy running',
     voice: VOICE_NAME,
-    model: 'claude-haiku-4-5-20251001',
+    model: CLAUDE_MODEL,
     claudeReady: !!ANTHROPIC_API_KEY,
     youtubeReady: !!YOUTUBE_API_KEY,
     historyLength: conversationHistory.length,
@@ -713,7 +723,7 @@ app.post('/vizi-test', (req, res) => {
   const systemText = buildTurnSystemText(mode, message, req.body && req.body.progress);
   const referenceContextApplied = systemText.includes('QUESTION-SPECIFIC VERIFIED GUITAR FACTS');
   const claudeBody = JSON.stringify({
-    model: 'claude-haiku-5-5',
+    model: CLAUDE_MODEL,
     max_tokens: 1000,
     system: cachedSystem(systemText),
     messages
@@ -1157,7 +1167,7 @@ app.post('/claude-tts', (req, res) => {
   );
 
   const claudeBody = JSON.stringify({
-    model: 'claude-haiku-4-5-20251001',
+    model: CLAUDE_MODEL,
     max_tokens: 1000,
     system: cachedSystem(systemText),
     messages
@@ -1205,10 +1215,7 @@ app.post('/claude-tts', (req, res) => {
           );
 
           const rawFullText =
-            parsed.content &&
-            parsed.content[0] &&
-            parsed.content[0].text ||
-            '';
+            extractClaudeText(parsed);
 
           const parsedPipe = parsePipeResponse(rawFullText);
           const recoveredPipe = recoverMisplacedViziCommand(parsedPipe);
@@ -1491,8 +1498,7 @@ app.post('/stt-claude-tts', async (req, res) => {
     );
 
     const claudeBody = JSON.stringify({
-      model:
-        'claude-haiku-4-5-20251001',
+      model: CLAUDE_MODEL,
       max_tokens: 1000,
       system: cachedSystem(systemText),
       messages
@@ -1559,10 +1565,7 @@ app.post('/stt-claude-tts', async (req, res) => {
                     );
 
                     const text =
-                      parsed.content &&
-                      parsed.content[0] &&
-                      parsed.content[0].text ||
-                      '';
+                      extractClaudeText(parsed);
 
                     // Store raw model text only after the outer handler parses,
                     // validates, and normalizes it. This keeps conversational
@@ -2022,8 +2025,7 @@ app.post('/claude', (req, res) => {
 
   const claudeBody =
     JSON.stringify({
-      model:
-        'claude-haiku-4-5-20251001',
+      model: CLAUDE_MODEL,
       max_tokens: 1000,
       system:
         cachedSystem(systemText),
@@ -2094,10 +2096,7 @@ app.post('/claude', (req, res) => {
               );
 
               const text =
-                parsed.content &&
-                parsed.content[0] &&
-                parsed.content[0].text ||
-                '';
+                extractClaudeText(parsed);
 
               addToHistory(
                 'assistant',
@@ -2781,8 +2780,7 @@ async function handleSongUpload(req, res) {
 
     const claudeBody =
       JSON.stringify({
-        model:
-          'claude-haiku-4-5-20251001',
+        model: CLAUDE_MODEL,
         max_tokens: 1500,
         system:
           `You are a music analysis assistant for the Vizi AI guitar tutor system. ` +
@@ -3002,10 +3000,7 @@ function callClaudeAPI(claudeBody) {
                   }
 
                   resolve(
-                    parsed.content &&
-                    parsed.content[0] &&
-                    parsed.content[0].text ||
-                    ''
+                    extractClaudeText(parsed)
                   );
                 } catch (err) {
                   reject(err);
